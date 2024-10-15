@@ -65,13 +65,7 @@ public class ResponseObject {
     	ResponseDTO response = buildResponse(lang, statusCode);
     	int i = 0;
 		String text = response.getMessage();
-		List<?> values = (List<?>) data;
-
-		while (text.contains("%s") && i < values.size()) {
-			text = text.replaceFirst("%s", String.valueOf(values.get(i)));
-			i++;
-		}
-
+		response.setData(data);
 		response.setMessage(text);
         return response;
     }

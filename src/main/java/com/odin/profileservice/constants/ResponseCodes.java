@@ -15,5 +15,8 @@ public class ResponseCodes {
 	
 	public static final String SUCCESS = "SUCCESS";
 	public static final String FAILURE = "FAILURE";
+	public static final Integer USER_ALREADY_EXISTS = 996;
+	public static final Integer USER_NOT_EXISTS = 995;
+	public static final Integer USER_CREATED = 2001;
 	
 }

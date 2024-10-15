@@ -73,5 +73,9 @@ public class Utility {
             throw new RuntimeException("Error while making REST call", e);
         }
     }
+    
+    public <D, E> E dtoToEntity(D dto, Class<E> entityClass) {
+        return objectMapper.convertValue(dto, entityClass);
+    }
 
 }

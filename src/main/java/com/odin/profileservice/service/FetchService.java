@@ -7,4 +7,6 @@ public interface FetchService {
 
 	ResponseDTO fetch(ProfileDTO profileDTO);
 
+	ResponseDTO fetchProfileDetails(ProfileDTO profileDTO);
+
 }
