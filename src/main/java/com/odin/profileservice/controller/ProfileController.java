@@ -27,7 +27,7 @@ public class ProfileController {
 	private CustomerFactory factory;
 	
 	@PostMapping(ApplicationConstants.CUSTOMER + ApplicationConstants.DETAILS)
-	public ResponseEntity<Object> createCustomer(HttpServletRequest servlet, @RequestBody ProfileDTO profileDTO ){
+	public ResponseEntity<Object> customerDetails(HttpServletRequest servlet, @RequestBody ProfileDTO profileDTO ){
 		ResponseDTO response = factory.getInstance(profileDTO).fetchProfileDetails(profileDTO);
 		return new ResponseEntity<>(response, HttpStatus.OK); 
 	}
