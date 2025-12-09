@@ -4,8 +4,11 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import javax.servlet.http.HttpServletRequest;
+
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -14,6 +17,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.odin.profileservice.constants.ApplicationConstants;
 import com.odin.profileservice.dto.ResponseDTO;
 
 import lombok.extern.slf4j.Slf4j;
@@ -27,24 +31,42 @@ public class Utility {
 	
 	@Autowired
 	private RestTemplate restTemplate;
+	
+	@Autowired
+    private RedisTemplate<String, Object> redisTemplate;
 
 	public <D, E> E getAnInstance(D dto, Class<E> entityClass) {
 		try {
-			return objectMapper.convertValue(dto, entityClass);
+			if (dto instanceof List<?>) {
+				List<?> dtoList = getInstances(dto, entityClass);
+				return dtoList.isEmpty() ? null : objectMapper.convertValue(dtoList.get(0), entityClass);
+	        } else {
+	            return objectMapper.convertValue(dto, entityClass);
+	        }
 		} catch (Exception e) {
 			log.error("Error occured while converting to class entityClass : {}", ExceptionUtils.getStackTrace(e));
 			return null;
 		}
 	}
 
-	public <T> List<T> getInstances(List<?> list, Class<T> clazz) {
-		try {
-			return list.stream().map(clazz::cast).collect(Collectors.toList());
-		} catch (Exception e) {
-			log.error("Error occured while converting to class entityClass : {}", ExceptionUtils.getStackTrace(e));
-			return Collections.emptyList();
-		}
+	public <T> List<T> getInstances(Object data, Class<T> clazz) {
+	    try {
+	        if (data instanceof List<?>) {
+	            return ((List<?>) data)
+	                .stream()
+	                .map(item -> getAnInstance(item, clazz))
+	                .collect(Collectors.toList());
+	        }
+	        // Case 2: If data is a single object
+	        else if (data != null) {
+	            return Collections.singletonList(getAnInstance(data, clazz));
+	        }
+	    } catch (Exception e) {
+	        log.error("Error occured while converting to class entityClass : {}", ExceptionUtils.getStackTrace(e));
+	    }
+	    return Collections.emptyList();
 	}
+
 
     public <T, R> ResponseDTO makeRestCall(String url, T requestBody, HttpMethod httpMethod, Class<R> responseType) {
         try {
@@ -76,6 +98,18 @@ public class Utility {
     
     public <D, E> E dtoToEntity(D dto, Class<E> entityClass) {
         return objectMapper.convertValue(dto, entityClass);
+    }
+
+	public String getDeviceSignature(HttpServletRequest servlet) {
+		return servlet.getHeader("deviceSignature");
+	}
+	
+	public String getAuthType(String flowKey) {
+        Object value = redisTemplate.opsForValue().get(flowKey);
+        if (value == null) {
+            return ApplicationConstants.PASSWORD_BASED_AUTH; // fallback
+        }
+        return value.toString();
     }
 
 }

@@ -56,4 +56,5 @@ public class Profile {
 	private String bankDetails;
 
 	private Auth auth;
+
 }

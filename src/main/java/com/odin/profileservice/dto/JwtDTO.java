@@ -16,5 +16,7 @@ import lombok.Setter;
 public class JwtDTO {
 	
 	private String accessToken;
+	private String refreshToken;
+    private String deviceSignature;
 
 }

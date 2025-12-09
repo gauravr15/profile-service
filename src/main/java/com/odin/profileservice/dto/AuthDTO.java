@@ -30,4 +30,5 @@ public class AuthDTO {
 	private Integer permLockCount;
 	private Timestamp tempLockDate;
 	private Timestamp permLockDate;
+	private boolean isOtpLogin;
 }

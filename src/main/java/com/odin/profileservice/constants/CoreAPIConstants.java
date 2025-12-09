@@ -1,4 +1,4 @@
-package com.odin.profileservice.repo;
+package com.odin.profileservice.constants;
 
 public class CoreAPIConstants {
 

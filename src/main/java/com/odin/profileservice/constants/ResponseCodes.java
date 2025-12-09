@@ -18,5 +18,10 @@ public class ResponseCodes {
 	public static final Integer USER_ALREADY_EXISTS = 996;
 	public static final Integer USER_NOT_EXISTS = 995;
 	public static final Integer USER_CREATED = 2001;
+	public static final Integer INVALID_REFRESH_TOKEN = 001;
 	
+	public static final Integer OTP_SENT_SUCCESSFUL = 2020;
+
+	public static final Integer OTP_EXPIRED = 994;
+	public static final Integer OTP_INVALID = 993;
 }

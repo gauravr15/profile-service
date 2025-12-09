@@ -3,13 +3,17 @@ package com.odin.profileservice.utility;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+
 import javax.crypto.SecretKey;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @Component
 public class JwtTokenUtil {
@@ -18,28 +22,38 @@ public class JwtTokenUtil {
     private String secret;
 
     @Value("${jwt.expiration}")
-    private long expirationTime; // in milliseconds
+    private long expirationTime; // ms
 
     @Value("${jwt.issuer}")
-    private String issuer; // The JWT issuer
+    private String issuer;
 
     private SecretKey getSigningKey() {
-        return Keys.hmacShaKeyFor(secret.getBytes()); // Use a SecretKey derived from the secret string
+        // Secret must be sufficiently long; ensure config provides a strong key
+        return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generateToken(String username) {
+    public String generateAccessToken(String subject, String customerId) {
         Map<String, Object> claims = new HashMap<>();
-        return doGenerateToken(claims, username);
+        if (customerId != null) {
+            claims.put("customerId", customerId);
+        }
+        return doGenerateToken(claims, subject);
+    }
+
+    public String generateRefreshToken() {
+        // Strong random token; can be UUID or secure random bytes base64
+        return UUID.randomUUID().toString();
     }
 
     private String doGenerateToken(Map<String, Object> claims, String subject) {
+        long now = System.currentTimeMillis();
         return Jwts.builder()
                 .setClaims(claims)
-                .setSubject(subject) // the user's identifier
-                .setIssuedAt(new Date(System.currentTimeMillis())) // issue date
-                .setExpiration(new Date(System.currentTimeMillis() + expirationTime)) // expiration date
-                .setIssuer(issuer) // set the issuer
-                .signWith(getSigningKey(), SignatureAlgorithm.HS512) // Use SecretKey and HS512 for signing
+                .setSubject(subject)
+                .setIssuedAt(new Date(now))
+                .setExpiration(new Date(now + expirationTime))
+                .setIssuer(issuer)
+                .signWith(getSigningKey(), SignatureAlgorithm.HS512)
                 .compact();
     }
 
@@ -48,13 +62,23 @@ public class JwtTokenUtil {
         return (username.equals(tokenUsername) && !isTokenExpired(token));
     }
 
-    private boolean isTokenExpired(String token) {
+    public String getDeviceSignatureFromToken(String token) {
+        Object val = Jwts.parserBuilder()
+                .setSigningKey(getSigningKey())
+                .build()
+                .parseClaimsJws(token)
+                .getBody()
+                .get("deviceSignature");
+        return val == null ? null : val.toString();
+    }
+
+    public boolean isTokenExpired(String token) {
         return getExpirationDateFromToken(token).before(new Date());
     }
 
     public String getUsernameFromToken(String token) {
         return Jwts.parserBuilder()
-                .setSigningKey(getSigningKey()) // Use parserBuilder and SecretKey for parsing
+                .setSigningKey(getSigningKey())
                 .build()
                 .parseClaimsJws(token)
                 .getBody()
@@ -63,7 +87,7 @@ public class JwtTokenUtil {
 
     public Date getExpirationDateFromToken(String token) {
         return Jwts.parserBuilder()
-                .setSigningKey(getSigningKey()) // Use parserBuilder and SecretKey for parsing
+                .setSigningKey(getSigningKey())
                 .build()
                 .parseClaimsJws(token)
                 .getBody()

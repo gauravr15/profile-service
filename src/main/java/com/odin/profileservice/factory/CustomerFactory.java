@@ -4,8 +4,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import com.odin.profileservice.dto.ProfileDTO;
-import com.odin.profileservice.service.FetchService;
-import com.odin.profileservice.service.impl.FetchCustomerServiceImpl;
+import com.odin.profileservice.enums.CustomerType;
+import com.odin.profileservice.service.LoginService;
+import com.odin.profileservice.service.impl.LoginServiceImpl;
 
 
 
@@ -13,10 +14,19 @@ import com.odin.profileservice.service.impl.FetchCustomerServiceImpl;
 public class CustomerFactory {
 	
 	@Autowired
-	FetchCustomerServiceImpl customer;
+	LoginServiceImpl customer;
 	
-	public FetchService getInstance(ProfileDTO profile) {
+	public LoginService getInstance(ProfileDTO profile) {
 		switch(profile.getCustomerType()) {
+		case CUSTOMER:
+			return customer;
+		default:
+			return null;
+		}
+	}
+	
+	public LoginService getInstance(CustomerType str) {
+		switch(str) {
 		case CUSTOMER:
 			return customer;
 		default:

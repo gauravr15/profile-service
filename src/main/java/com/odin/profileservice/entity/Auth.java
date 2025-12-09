@@ -48,4 +48,7 @@ public class Auth {
     private Timestamp tempLockDate;
 
     private Timestamp permLockDate;
+    
+    private boolean isOtpLogin;
+    
 }
