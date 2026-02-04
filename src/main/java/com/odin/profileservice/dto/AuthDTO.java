@@ -2,6 +2,8 @@ package com.odin.profileservice.dto;
 
 import java.sql.Timestamp;
 
+import javax.persistence.Column;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -31,4 +33,6 @@ public class AuthDTO {
 	private Timestamp tempLockDate;
 	private Timestamp permLockDate;
 	private boolean isOtpLogin;
+    private String publicKey;
+    private String keyVersion;
 }

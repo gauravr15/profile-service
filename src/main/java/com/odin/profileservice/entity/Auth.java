@@ -2,6 +2,8 @@ package com.odin.profileservice.entity;
 
 import java.sql.Timestamp;
 
+import javax.persistence.Column;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -50,5 +52,9 @@ public class Auth {
     private Timestamp permLockDate;
     
     private boolean isOtpLogin;
+    
+    private String publicKey;
+    
+    private String keyVersion;
     
 }

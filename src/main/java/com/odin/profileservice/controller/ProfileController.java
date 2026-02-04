@@ -13,11 +13,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.odin.profileservice.constants.ApplicationConstants;
+import com.odin.profileservice.constants.ResponseCodes;
+import com.odin.profileservice.dto.AuthDTO;
+import com.odin.profileservice.dto.BulkProfileDTO;
 import com.odin.profileservice.dto.MobileListDTO;
 import com.odin.profileservice.dto.ProfileDTO;
 import com.odin.profileservice.dto.ResponseDTO;
 import com.odin.profileservice.enums.CustomerType;
 import com.odin.profileservice.factory.CustomerFactory;
+import com.odin.profileservice.utility.PublicKeyRefreshProducer;
 import com.odin.profileservice.utility.ResponseObject;
 
 @RestController
@@ -29,6 +33,9 @@ public class ProfileController {
 
 	@Autowired
 	private CustomerFactory factory;
+
+	@Autowired
+	private PublicKeyRefreshProducer publicKeyRefreshProducer;
 
 	@PostMapping(ApplicationConstants.CUSTOMER + ApplicationConstants.DETAILS)
 	public ResponseEntity<Object> customerDetails(HttpServletRequest servlet, @RequestBody ProfileDTO profileDTO) {
@@ -48,7 +55,37 @@ public class ProfileController {
 	public ResponseEntity<Object> fetchCustomerByMobile(HttpServletRequest servlet,
 			@RequestBody MobileListDTO mobiles) {
 		CustomerType customerType = CustomerType.CUSTOMER;
-		ResponseDTO response = factory.getInstance(customerType).fetchCustomerByMobile(customerType, mobiles);
+		ResponseDTO response = factory.getInstance(customerType).fetchCustomerByMobile(servlet, customerType, mobiles);
+		return new ResponseEntity<>(response, HttpStatus.OK);
+	}
+	
+	@PostMapping(ApplicationConstants.CUSTOMER + ApplicationConstants.BULK + ApplicationConstants.KEY)
+	public ResponseEntity<Object> fetchPublicKey(HttpServletRequest servlet,
+			@RequestBody BulkProfileDTO profile) {
+		CustomerType customerType = CustomerType.CUSTOMER;
+		ResponseDTO response = factory.getInstance(customerType).fetchPublicKey(servlet, customerType, profile);
+		return new ResponseEntity<>(response, HttpStatus.OK);
+	}
+
+	@PostMapping(ApplicationConstants.CUSTOMER + ApplicationConstants.KEY + ApplicationConstants.KEY_REFRESH)
+	public ResponseEntity<Object> refreshPublicKey(HttpServletRequest servlet,
+			@RequestBody ProfileDTO profile) {
+		if (profile == null || profile.getCustomerId() == null) {
+			ResponseDTO responseDto = response.buildResponse(ApplicationConstants.APP_LANG, ResponseCodes.INVALID_REQUEST);
+			return new ResponseEntity<>(responseDto, HttpStatus.OK);
+		}
+
+		String customerId = String.valueOf(profile.getCustomerId());
+		publicKeyRefreshProducer.publish(customerId);
+		ResponseDTO responseDto = response.buildResponse(ApplicationConstants.APP_LANG, ResponseCodes.SUCCESS_CODE);
+		return new ResponseEntity<>(responseDto, HttpStatus.OK);
+	}
+	
+	@PostMapping(ApplicationConstants.CUSTOMER + ApplicationConstants.KEY + ApplicationConstants.SAVE)
+	public ResponseEntity<Object> savePublicKey(HttpServletRequest servlet,
+			@RequestBody AuthDTO profile) {
+		CustomerType customerType = CustomerType.CUSTOMER;
+		ResponseDTO response = factory.getInstance(customerType).savePublicKey(servlet, customerType, profile);
 		return new ResponseEntity<>(response, HttpStatus.OK);
 	}
 

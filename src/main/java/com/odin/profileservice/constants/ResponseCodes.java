@@ -8,6 +8,8 @@ public class ResponseCodes {
 	public static final Integer EXCEPTION_CODE = 1;
 	public static final Integer INVALID_REQUEST = 2;
 	public static final Integer INTERNAL_SERVER_ERROR = 3;
+	public static final Integer FORBIDDEN = 5;
+	public static final Integer NOT_FOUND = 6;
 	public static final Integer APP_VERSION_MISSING = 4;
 	public static final Integer APP_UPDATE_REQUIRED = 998;
 	public static final Integer NO_DATA_FOUND = 999;

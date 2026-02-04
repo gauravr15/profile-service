@@ -17,16 +17,19 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.ObjectUtils;
 
-import com.google.i18n.phonenumbers.NumberParseException;
 import com.google.i18n.phonenumbers.PhoneNumberUtil;
 import com.google.i18n.phonenumbers.Phonenumber.PhoneNumber;
 import com.odin.profileservice.constants.ApplicationConstants;
 import com.odin.profileservice.constants.LanguageConstants;
 import com.odin.profileservice.constants.ResponseCodes;
+import com.odin.profileservice.dto.AuthDTO;
+import com.odin.profileservice.dto.BulkProfileDTO;
+import com.odin.profileservice.dto.BulkPublicKeyDTO;
 import com.odin.profileservice.dto.CustomerDetailsDTO;
 import com.odin.profileservice.dto.JwtDTO;
 import com.odin.profileservice.dto.MobileListDTO;
 import com.odin.profileservice.dto.ProfileDTO;
+import com.odin.profileservice.dto.PublicKeyDTO;
 import com.odin.profileservice.dto.ResponseDTO;
 import com.odin.profileservice.entity.Profile;
 import com.odin.profileservice.entity.RefreshToken;
@@ -35,6 +38,7 @@ import com.odin.profileservice.enums.OTPType;
 import com.odin.profileservice.repo.ProfileRepository;
 import com.odin.profileservice.repo.RefreshTokenRepository;
 import com.odin.profileservice.service.LoginService;
+import com.odin.profileservice.service.SyncAuditService;
 import com.odin.profileservice.utility.JwtTokenUtil;
 import com.odin.profileservice.utility.OtpService;
 import com.odin.profileservice.utility.ResponseObject;
@@ -62,6 +66,9 @@ public class LoginServiceImpl implements LoginService {
 	private OtpService otpService;
 
 	@Autowired
+	private SyncAuditService sync;
+
+	@Autowired
 	private RefreshTokenRepository refreshTokenRepo;
 
 	@Value("${max.incorrect.password.count}")
@@ -69,6 +76,9 @@ public class LoginServiceImpl implements LoginService {
 
 	@Value("${jwt.secret}")
 	private String jwtSecret;
+
+	@Value("${update.sync.time}")
+	private Boolean updateSyncTime;
 
 	@Value("${jwt.expiration}")
 	private long accessTokenExpiryMs;
@@ -146,10 +156,9 @@ public class LoginServiceImpl implements LoginService {
 			rt.setIsActive(true);
 			rt.setDeviceSignature(deviceSignature);
 			RefreshToken existing = refreshTokenRepo.findByCustomerId(Long.valueOf(profile.getCustomerId()));
-			if(Objects.isNull(existing)) {
+			if (Objects.isNull(existing)) {
 				refreshTokenRepo.save(rt);
-			}
-			else {
+			} else {
 				refreshTokenRepo.delete(existing);
 				refreshTokenRepo.save(rt);
 			}
@@ -191,6 +200,26 @@ public class LoginServiceImpl implements LoginService {
 			checkProfile.getAuth().setTempLockCount(0);
 			checkProfile.getAuth().setPermLockCount(0);
 			checkProfile.getAuth().setIncorrectPasswordCount(0);
+
+                        String oldKey = checkProfile.getAuth().getPublicKey();
+                        String newKey = (profileDTO.getAuth() != null) ? profileDTO.getAuth().getPublicKey() : null;
+
+                        if (!org.springframework.util.ObjectUtils.isEmpty(newKey) && !keysMatch(oldKey, newKey)) {
+                                String currentVersionStr = checkProfile.getAuth().getKeyVersion();
+				int nextVersion = 1;
+				if (!org.springframework.util.ObjectUtils.isEmpty(currentVersionStr)) {
+					try {
+						nextVersion = Integer.parseInt(currentVersionStr) + 1;
+					} catch (NumberFormatException e) {
+						nextVersion = 1;
+					}
+				}
+				checkProfile.getAuth().setPublicKey(newKey);
+				checkProfile.getAuth().setKeyVersion(String.valueOf(nextVersion));
+				log.info("Key rotated during login for customer {}: version {} -> {}", checkProfile.getCustomerId(),
+						currentVersionStr, nextVersion);
+			}
+
 			profileRepo.update(checkProfile);
 
 			// Generate tokens
@@ -208,10 +237,9 @@ public class LoginServiceImpl implements LoginService {
 			rt.setIsActive(true);
 			rt.setDeviceSignature(deviceSignature);
 			RefreshToken existing = refreshTokenRepo.findByCustomerId(Long.valueOf(checkProfile.getCustomerId()));
-			if(Objects.isNull(existing)) {
+			if (Objects.isNull(existing)) {
 				refreshTokenRepo.save(rt);
-			}
-			else {
+			} else {
 				refreshTokenRepo.delete(existing);
 				refreshTokenRepo.save(rt);
 			}
@@ -237,115 +265,183 @@ public class LoginServiceImpl implements LoginService {
 	}
 
 	@Override
-	public ResponseDTO fetchCustomerByMobile(CustomerType customerType, MobileListDTO mobiles) {
-	    log.info("Fetching fetchCustomerByMobile");
+	public ResponseDTO fetchCustomerByMobile(HttpServletRequest request, CustomerType customerType,
+			MobileListDTO mobiles) {
+		log.info("Fetching fetchCustomerByMobile");
+		String customerId = request.getHeader("customerId");
+		log.debug("fetching bulk customer details for customerId : {}", customerId);
 
-	    PhoneNumberUtil phoneNumberUtil = PhoneNumberUtil.getInstance();
-	    Set<String> normalizedMobiles = new HashSet<>();
-	    Map<String, String> mobileMap = new HashMap<>();
+		PhoneNumberUtil phoneNumberUtil = PhoneNumberUtil.getInstance();
+		Set<String> normalizedMobiles = new HashSet<>();
+		Map<String, String> mobileMap = new HashMap<>();
 
-	    // Extract region from provided country code
-	    String countryCode = mobiles.getCountryCode() != null
-	            ? mobiles.getCountryCode().replaceAll("[^0-9]", "")
-	            : null;
+		// Extract region from provided country code
+		String countryCode = mobiles.getCountryCode() != null ? mobiles.getCountryCode().replaceAll("[^0-9]", "")
+				: null;
 
-	    String region = null;
-	    if (countryCode != null) {
-	        try {
-	            int code = Integer.parseInt(countryCode);
-	            List<String> regions = phoneNumberUtil.getRegionCodesForCountryCode(code);
-	            if (!regions.isEmpty()) {
-	                region = regions.get(0);
-	            }
-	        } catch (Exception ex) {
-	            log.warn("Invalid country code: {}", countryCode);
-	        }
-	    }
+		String region = null;
+		if (countryCode != null) {
+			try {
+				int code = Integer.parseInt(countryCode);
+				List<String> regions = phoneNumberUtil.getRegionCodesForCountryCode(code);
+				if (!regions.isEmpty()) {
+					region = regions.get(0);
+				}
+			} catch (Exception ex) {
+				log.warn("Invalid country code: {}", countryCode);
+			}
+		}
 
-	    // Normalize incoming numbers (FULLY FIXED)
-	    for (String rawMobile : mobiles.getMobile()) {
-	        if (rawMobile == null) continue;
+		// Normalize incoming numbers (FULLY FIXED)
+		for (String rawMobile : mobiles.getMobile()) {
+			if (rawMobile == null)
+				continue;
 
-	        String cleaned = rawMobile.replaceAll("[^0-9+]", "");
+			String cleaned = rawMobile.replaceAll("[^0-9+]", "");
 
-	        String normalized = null;
+			String normalized = null;
 
-	        try {
-	            PhoneNumber phoneNumber = null;
+			try {
+				PhoneNumber phoneNumber = null;
 
-	            // CASE 1: starts with + → parse directly
-	            if (cleaned.startsWith("+")) {
-	                phoneNumber = phoneNumberUtil.parse(cleaned, null);
-	            } else {
-	                // CASE 2: Try using logged-in user's region
-	                try {
-	                    phoneNumber = phoneNumberUtil.parse(cleaned, region);
+				// CASE 1: starts with + → parse directly
+				if (cleaned.startsWith("+")) {
+					phoneNumber = phoneNumberUtil.parse(cleaned, null);
+				} else {
+					// CASE 2: Try using logged-in user's region
+					try {
+						phoneNumber = phoneNumberUtil.parse(cleaned, region);
 
-	                    // If invalid, fallback to international
-	                    if (!phoneNumberUtil.isValidNumber(phoneNumber)) {
-	                        phoneNumber = phoneNumberUtil.parse("+" + cleaned, null);
-	                    }
-	                } catch (Exception e) {
-	                    // Fallback for numbers like 66629..., 9199..., etc.
-	                    phoneNumber = phoneNumberUtil.parse("+" + cleaned, null);
-	                }
-	            }
+						// If invalid, fallback to international
+						if (!phoneNumberUtil.isValidNumber(phoneNumber)) {
+							phoneNumber = phoneNumberUtil.parse("+" + cleaned, null);
+						}
+					} catch (Exception e) {
+						// Fallback for numbers like 66629..., 9199..., etc.
+						phoneNumber = phoneNumberUtil.parse("+" + cleaned, null);
+					}
+				}
 
-	            // Final validation
-	            if (phoneNumberUtil.isValidNumber(phoneNumber)) {
-	                normalized = phoneNumberUtil
-	                        .format(phoneNumber, PhoneNumberUtil.PhoneNumberFormat.E164);
+				// Final validation
+				if (phoneNumberUtil.isValidNumber(phoneNumber)) {
+					normalized = phoneNumberUtil.format(phoneNumber, PhoneNumberUtil.PhoneNumberFormat.E164);
 
-	                if (normalized.startsWith("+")) {
-	                    normalized = normalized.substring(1);
-	                }
-	            }
+					if (normalized.startsWith("+")) {
+						normalized = normalized.substring(1);
+					}
+				}
 
-	        } catch (Exception e) {
-	            log.warn("Parse failed for {}: {}", rawMobile, e.getMessage());
-	        }
+			} catch (Exception e) {
+				log.warn("Parse failed for {}: {}", rawMobile, e.getMessage());
+			}
 
-	        // Only add if valid
-	        if (normalized != null) {
-	            normalizedMobiles.add(normalized);
-	            mobileMap.put(normalized, rawMobile);
-	        } else {
-	            log.warn("Invalid mobile skipped: {}", rawMobile);
-	        }
-	    }
+			// Only add if valid
+			if (normalized != null) {
+				normalizedMobiles.add(normalized);
+				mobileMap.put(normalized, rawMobile);
+			} else {
+				log.warn("Invalid mobile skipped: {}", rawMobile);
+			}
+		}
 
-	    if (normalizedMobiles.isEmpty()) {
-	        return response.buildResponse(LanguageConstants.EN, ResponseCodes.FAILURE_CODE);
-	    }
+		if (normalizedMobiles.isEmpty()) {
+			return response.buildResponse(LanguageConstants.EN, ResponseCodes.FAILURE_CODE);
+		}
 
-	    // DB lookup
-	    List<Profile> profiles =
-	            profileRepo.findLikeMobileNumber(new ArrayList<>(normalizedMobiles), true);
+		// DB lookup
+		List<Profile> profiles = profileRepo.findLikeMobileNumber(new ArrayList<>(normalizedMobiles), true);
 
-	    Map<String, CustomerDetailsDTO> result = new HashMap<>();
+		Map<String, CustomerDetailsDTO> result = new HashMap<>();
 
-	    for (Profile profile : profiles) {
-	        String normalizedProfileMobile = profile.getMobile().replaceAll("[^0-9]", "");
+		for (Profile profile : profiles) {
+			String normalizedProfileMobile = profile.getMobile().replaceAll("[^0-9]", "");
 
-	        String reqMobile =
-	                mobileMap.getOrDefault(normalizedProfileMobile, normalizedProfileMobile);
+			String reqMobile = mobileMap.getOrDefault(normalizedProfileMobile, normalizedProfileMobile);
 
-	        CustomerDetailsDTO dto = CustomerDetailsDTO.builder()
-	                .customerId(profile.getCustomerId())
-	                .firstName(profile.getFirstName())
-	                .lastName(profile.getLastName())
-	                .mobile(profile.getMobile())
-	                .build();
+			CustomerDetailsDTO dto = CustomerDetailsDTO.builder().customerId(profile.getCustomerId())
+					.firstName(profile.getFirstName()).lastName(profile.getLastName()).mobile(profile.getMobile())
+					.build();
 
-	        result.put(reqMobile, dto);
-	    }
+			result.put(reqMobile, dto);
+		}
 
-	    if (result.isEmpty()) {
-	        return response.buildResponse(LanguageConstants.EN, ResponseCodes.FAILURE_CODE);
-	    }
-
-	    return response.buildResponse(LanguageConstants.EN, ResponseCodes.SUCCESS_CODE, result);
+		if (result.isEmpty()) {
+			return response.buildResponse(LanguageConstants.EN, ResponseCodes.FAILURE_CODE);
+		}
+		log.info("updating sync time");
+		if (updateSyncTime) {
+			log.info("performing contact sync");
+			updateSyncDetails(customerId);
+		}
+		return response.buildResponse(LanguageConstants.EN, ResponseCodes.SUCCESS_CODE, result);
 	}
 
+	void updateSyncDetails(String customerId) {
+		sync.updateLastSyncedTime(customerId);
+	}
 
+	@Override
+	public ResponseDTO fetchPublicKey(HttpServletRequest servlet, CustomerType customerType, BulkProfileDTO profiles) {
+		List<PublicKeyDTO> keyList = new ArrayList<>();
+		for (ProfileDTO profile : profiles.getProfile()) {
+			Profile result = profileRepo.findByCustomerId(profile.getCustomerId());
+			if (!ObjectUtils.isEmpty(result) || !ObjectUtils.isEmpty(result.getAuth())
+					|| !ObjectUtils.isEmpty(result.getAuth().getPublicKey())) {
+
+                                String key = result.getAuth().getPublicKey();
+                                String version = result.getAuth().getKeyVersion();
+                                PublicKeyDTO pubKey = PublicKeyDTO.builder().customerId(String.valueOf(result.getCustomerId()))
+                                                .publicKey(key).keyVersion(version).build();
+                                keyList.add(pubKey);
+                        }
+                }
+                BulkPublicKeyDTO dto = BulkPublicKeyDTO.builder().keys(keyList).build();
+                return response.buildResponse(LanguageConstants.EN, ResponseCodes.SUCCESS_CODE, dto);
+        }
+
+        @Override
+        public ResponseDTO savePublicKey(HttpServletRequest servlet, CustomerType customerType, AuthDTO auth) {
+        Profile result = profileRepo.findByCustomerId(Integer.valueOf(auth.getCustomerId()));
+        if (ObjectUtils.isEmpty(result) || ObjectUtils.isEmpty(result.getAuth())) {
+            return response.buildResponse(LanguageConstants.EN, ResponseCodes.FAILURE_CODE);
+        }
+
+        String oldKey = result.getAuth().getPublicKey();
+        String newKey = auth.getPublicKey();
+        String currentVersionStr = result.getAuth().getKeyVersion();
+
+        // Backend-driven key versioning: Increment if key changes (based on decoded material)
+        if (!org.springframework.util.ObjectUtils.isEmpty(newKey) && !keysMatch(oldKey, newKey)) {
+            int nextVersion = 1;
+            if (!org.springframework.util.ObjectUtils.isEmpty(currentVersionStr)) {
+                try {
+                    nextVersion = Integer.parseInt(currentVersionStr) + 1;
+                } catch (NumberFormatException e) {
+                    nextVersion = 1;
+                }
+            }
+            result.getAuth().setPublicKey(newKey);
+            result.getAuth().setKeyVersion(String.valueOf(nextVersion));
+            profileRepo.update(result);
+            log.info("Key rotated for customer {}: version {} -> {}", auth.getCustomerId(), currentVersionStr, nextVersion);
+            return response.buildResponse(LanguageConstants.EN, ResponseCodes.SUCCESS_CODE, String.valueOf(nextVersion));
+        }
+
+        return response.buildResponse(LanguageConstants.EN, ResponseCodes.SUCCESS_CODE, currentVersionStr);
+    }
+
+    private boolean keysMatch(String key1, String key2) {
+        if (key1 == null || key2 == null)
+            return Objects.equals(key1, key2);
+        if (key1.equals(key2))
+            return true;
+        try {
+            // Trim and compare decoded bytes to handle padding or encoding variations
+            byte[] b1 = java.util.Base64.getDecoder().decode(key1.trim());
+            byte[] b2 = java.util.Base64.getDecoder().decode(key2.trim());
+            return java.util.Arrays.equals(b1, b2);
+        } catch (Exception e) {
+            return key1.trim().equals(key2.trim());
+        }
+    }
 }

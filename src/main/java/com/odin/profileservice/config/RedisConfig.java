@@ -29,6 +29,23 @@ public class RedisConfig {
     }
 
     @Bean
+    public RedisTemplate<String, Boolean> redisTemplateBool(RedisConnectionFactory connectionFactory) {
+        RedisTemplate<String, Boolean> template = new RedisTemplate<>();
+        template.setConnectionFactory(connectionFactory);
+
+        // Use String serialization for keys
+        template.setKeySerializer(new StringRedisSerializer());
+        template.setHashKeySerializer(new StringRedisSerializer());
+
+        // Value serialization for Boolean
+        template.setValueSerializer(new GenericToStringSerializer<>(Boolean.class));
+        template.setHashValueSerializer(new GenericToStringSerializer<>(Boolean.class));
+
+        template.afterPropertiesSet();
+        return template;
+    }
+
+    @Bean
     public CommandLineRunner redisInitializer(RedisTemplate<String, Object> redisTemplate) {
         return args -> {
             if (!Boolean.TRUE.equals(redisTemplate.hasKey("auth:flow:signup"))) {

@@ -19,5 +19,10 @@ public class ApplicationConstants {
 	public static final String PASSWORD_BASED_AUTH = "PASSWORD_BASED_AUTH";
 	public static final String OTP_BASED_AUTH = "OTP_BASED_AUTH";
 	public static final String BULK = "/bulk";
+	public static final String KEY = "/key";
+	public static final String FETCH_PUBLIC_KEY = "FETCH_PUBLIC_KEY";
+	public static final String KEY_REFRESH = "/refresh";
+	public static final String GROUPS = "/groups";
+	public static final String USERS = "/users";
 
 }
