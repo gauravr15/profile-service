@@ -12,7 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 public class NotificationUtility {
 
-    private static final String TOPIC = "otp-topic";
+    private static final String TOPIC = "otp.notification.message";
 
     @Autowired
     private KafkaTemplate<String, NotificationDTO> kafkaTemplate;
