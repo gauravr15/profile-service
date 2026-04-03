@@ -128,12 +128,39 @@ public class OTPGenerationServiceImpl implements OTPGenerationService{
 	/**
 	 * Returns true if the given mobile/email belongs to the Google Play test account list.
 	 * Test accounts receive a static OTP and no SMS is dispatched.
+	 *
+	 * Country-code-tolerant: compares both numbers by their longest common digit suffix.
+	 * The match is accepted only when:
+	 *   - the shared suffix is >= 8 digits (long enough to be a real subscriber number), AND
+	 *   - the non-matching leading portion of each number is <= 4 digits (valid CC length).
+	 * This means +91AAAA, +33AAAA, +1AAAA all match the same stored entry regardless
+	 * of which country the reviewer selects in the app dropdown.
 	 */
 	private boolean isTestCustomer(String identifier) {
 		if (testCustomerList == null || testCustomerList.trim().isEmpty()) return false;
+		if (identifier == null || identifier.trim().isEmpty()) return false;
 		return Arrays.stream(testCustomerList.split(","))
 				.map(String::trim)
-				.anyMatch(n -> n.equals(identifier));
+				.filter(entry -> entry.length() >= 8)
+				.anyMatch(entry -> sameSubscriberNumber(identifier, entry));
+	}
+
+	/**
+	 * Compares two phone numbers by their subscriber portion, ignoring any country-code prefix.
+	 * Uses the longest common suffix: if both numbers share >= 8 trailing digits AND the
+	 * unmatched leading fragment of each is <= 4 characters, they are considered the same number.
+	 */
+	private boolean sameSubscriberNumber(String a, String b) {
+		if (a.equals(b)) return true;
+		int i = a.length() - 1, j = b.length() - 1, commonLen = 0;
+		while (i >= 0 && j >= 0 && a.charAt(i) == b.charAt(j)) {
+			commonLen++;
+			i--;
+			j--;
+		}
+		int remainingA = a.length() - commonLen;
+		int remainingB = b.length() - commonLen;
+		return commonLen >= 8 && remainingA <= 4 && remainingB <= 4;
 	}
 
 }
