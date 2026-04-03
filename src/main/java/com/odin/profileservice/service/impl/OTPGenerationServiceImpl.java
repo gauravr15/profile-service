@@ -1,5 +1,6 @@
 package com.odin.profileservice.service.impl;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -34,6 +35,14 @@ public class OTPGenerationServiceImpl implements OTPGenerationService{
 
 	@Value("${static.otp}")
 	private String staticOtp;
+
+	/** Comma-separated mobile numbers (with country code) that are Google Play test accounts. */
+	@Value("${test.customer.list:}")
+	private String testCustomerList;
+
+	/** Static OTP returned to test accounts — never sent via SMS. */
+	@Value("${test.customer.otp:}")
+	private String testCustomerOtp;
 	
 	@Value("${otp.expiry.duration.seconds}")
 	private int otpExpiryDuration;
@@ -78,25 +87,35 @@ public class OTPGenerationServiceImpl implements OTPGenerationService{
 					otpService.clearOtp(dto.getEmail(), dto.getType());
 				}
 				if (dto.getMobile() != null && !dto.getMobile().isEmpty()) {
-					String otp = isStaticOtp ? staticOtp : String.valueOf((int) (Math.random() * 900000) + 100000);
+					boolean isTestCustomer = isTestCustomer(dto.getMobile());
+					String otp = isTestCustomer ? testCustomerOtp
+							: isStaticOtp ? staticOtp
+							: String.valueOf((int) (Math.random() * 900000) + 100000);
 
 					otpService.saveOtp(dto.getMobile(), otp, dto.getType(), otpExpiryDuration);
-					Map<String, String> map = new HashMap<>();
-					map.put("otp", otp);
-					NotificationDTO notify = NotificationDTO.builder().mobile(dto.getMobile()).notificationId(dto.getType().getValue())
-							.channel(NotificationChannel.SMS).map(map).build();
-					notification.sendOtpMessage(notify);
+					if (!isTestCustomer) {
+						Map<String, String> map = new HashMap<>();
+						map.put("otp", otp);
+						NotificationDTO notify = NotificationDTO.builder().mobile(dto.getMobile()).notificationId(dto.getType().getValue())
+								.channel(NotificationChannel.SMS).map(map).build();
+						notification.sendOtpMessage(notify);
+					}
 				}
 
 				if (dto.getEmail() != null && !dto.getEmail().isEmpty()) {
-					String otp = isStaticOtp ? staticOtp : String.valueOf((int) (Math.random() * 900000) + 100000);
+					boolean isTestCustomer = isTestCustomer(dto.getEmail());
+					String otp = isTestCustomer ? testCustomerOtp
+							: isStaticOtp ? staticOtp
+							: String.valueOf((int) (Math.random() * 900000) + 100000);
 
 					otpService.saveOtp(dto.getEmail(), otp, OTPType.REGISTRATION, otpExpiryDuration);
-					Map<String, String> map = new HashMap<>();
-					map.put("otp", otp);
-					NotificationDTO notify = NotificationDTO.builder().email(dto.getEmail()).notificationId(dto.getType().getValue())
-							.channel(NotificationChannel.EMAIL).map(map).build();
-					notification.sendOtpMessage(notify);
+					if (!isTestCustomer) {
+						Map<String, String> map = new HashMap<>();
+						map.put("otp", otp);
+						NotificationDTO notify = NotificationDTO.builder().email(dto.getEmail()).notificationId(dto.getType().getValue())
+								.channel(NotificationChannel.EMAIL).map(map).build();
+						notification.sendOtpMessage(notify);
+					}
 				}
 				return response.buildResponse(ResponseCodes.OTP_SENT_SUCCESSFUL);
 			}
@@ -105,7 +124,16 @@ public class OTPGenerationServiceImpl implements OTPGenerationService{
 			return response.buildResponse(ResponseCodes.FAILURE_CODE);
 		}
 	}
-	
-	
+
+	/**
+	 * Returns true if the given mobile/email belongs to the Google Play test account list.
+	 * Test accounts receive a static OTP and no SMS is dispatched.
+	 */
+	private boolean isTestCustomer(String identifier) {
+		if (testCustomerList == null || testCustomerList.trim().isEmpty()) return false;
+		return Arrays.stream(testCustomerList.split(","))
+				.map(String::trim)
+				.anyMatch(n -> n.equals(identifier));
+	}
 
 }
