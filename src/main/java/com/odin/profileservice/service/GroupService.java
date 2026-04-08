@@ -1,8 +1,10 @@
 package com.odin.profileservice.service;
 
 import com.odin.profileservice.dto.CreateGroupRequest;
+import com.odin.profileservice.dto.GroupCreatedEvent;
 import com.odin.profileservice.entity.Group;
 import com.odin.profileservice.repo.GroupRepository;
+import com.odin.profileservice.utility.GroupEventProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -25,6 +27,7 @@ import java.util.UUID;
 public class GroupService {
 
     private final GroupRepository groupRepository;
+    private final GroupEventProducer groupEventProducer;
 
     @Transactional
     public Group createGroup(String creatorId, CreateGroupRequest request) {
@@ -62,6 +65,22 @@ public class GroupService {
                 saved.getGroupId(),
                 saved.getMembers() != null ? saved.getMembers().size() : 0,
                 saved.getAdmins() != null ? saved.getAdmins().size() : 0);
+
+        // Publish Kafka event so web-socket-service can notify members in real time
+        try {
+            GroupCreatedEvent event = GroupCreatedEvent.builder()
+                    .groupId(saved.getGroupId())
+                    .groupName(saved.getName())
+                    .memberIds(new ArrayList<>(saved.getMembers()))
+                    .creatorId(creatorId)
+                    .createdAt(saved.getCreatedAt().getTime())
+                    .build();
+            groupEventProducer.publishGroupCreated(event);
+        } catch (Exception e) {
+            log.error("[GROUP-CREATE] Failed to publish GroupCreatedEvent for groupId={}: {}",
+                    saved.getGroupId(), e.getMessage(), e);
+        }
+
         return saved;
     }
 
