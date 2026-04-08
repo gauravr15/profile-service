@@ -46,8 +46,8 @@ public class GroupService {
         members.add(creatorId);
         members.addAll(requestedMembers);
 
-        if (members.size() < 3) {
-            throw new IllegalArgumentException("Group must have at least 3 unique members including creator");
+        if (members.size() < 2) {
+            throw new IllegalArgumentException("Group must have at least 2 unique members including creator");
         }
 
         Group group = Group.builder()
@@ -142,8 +142,8 @@ public class GroupService {
         if (request == null || !StringUtils.hasText(request.getName())) {
             throw new IllegalArgumentException("Group name is required");
         }
-        if (CollectionUtils.isEmpty(request.getMemberIds()) || request.getMemberIds().size() < 2) {
-            throw new IllegalArgumentException("At least two additional members are required");
+        if (CollectionUtils.isEmpty(request.getMemberIds()) || request.getMemberIds().size() < 1) {
+            throw new IllegalArgumentException("At least one additional member is required");
         }
     }
 
