@@ -12,6 +12,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -66,7 +69,7 @@ public class GroupService {
                 saved.getMembers() != null ? saved.getMembers().size() : 0,
                 saved.getAdmins() != null ? saved.getAdmins().size() : 0);
 
-        // Publish Kafka event so web-socket-service can notify members in real time
+        // Publish Kafka event AFTER transaction commits so the group is visible to readers
         try {
             GroupCreatedEvent event = GroupCreatedEvent.builder()
                     .groupId(saved.getGroupId())
@@ -75,9 +78,19 @@ public class GroupService {
                     .creatorId(creatorId)
                     .createdAt(saved.getCreatedAt().getTime())
                     .build();
-            groupEventProducer.publishGroupCreated(event);
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        groupEventProducer.publishGroupCreated(event);
+                    } catch (Exception ex) {
+                        log.error("[GROUP-CREATE] Failed to publish GroupCreatedEvent after commit for groupId={}: {}",
+                                event.getGroupId(), ex.getMessage(), ex);
+                    }
+                }
+            });
         } catch (Exception e) {
-            log.error("[GROUP-CREATE] Failed to publish GroupCreatedEvent for groupId={}: {}",
+            log.error("[GROUP-CREATE] Failed to register Kafka publish for groupId={}: {}",
                     saved.getGroupId(), e.getMessage(), e);
         }
 
