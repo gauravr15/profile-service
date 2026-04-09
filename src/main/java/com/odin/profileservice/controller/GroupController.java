@@ -82,20 +82,24 @@ public class GroupController {
     public ResponseEntity<ResponseDTO> getGroupById(
             @PathVariable String groupId,
             @RequestHeader(value = "customerId", required = false) String customerId) {
+        log.info("[DIAG] getGroupById reached: groupId={} customerId={}", groupId, customerId);
         try {
             if (StringUtils.hasText(customerId)) {
+                log.info("[DIAG] getGroupById calling getGroupForMember: groupId={} customerId={}", groupId, customerId);
                 Group group = groupService.getGroupForMember(groupId, customerId);
                 ResponseDTO response = responseObject.buildResponse(ResponseCodes.SUCCESS_CODE, toResponse(group));
                 return new ResponseEntity<>(response, HttpStatus.OK);
             }
 
             Group group = groupService.getGroup(groupId);
+            log.info("[DIAG] getGroupById no customerId, returning summary only: groupId={}", groupId);
             Map<String, Object> payload = new HashMap<>();
             payload.put("groupId", group.getGroupId());
             payload.put("name", group.getName());
             ResponseDTO response = responseObject.buildResponse(ResponseCodes.SUCCESS_CODE, payload);
             return new ResponseEntity<>(response, HttpStatus.OK);
         } catch (GroupService.GroupNotFoundException ex) {
+            log.warn("[DIAG] getGroupById GroupNotFoundException: groupId={} customerId={}", groupId, customerId);
             ResponseDTO response = responseObject.buildResponse(ResponseCodes.NO_DATA_FOUND);
             return new ResponseEntity<>(response, HttpStatus.NOT_FOUND);
         } catch (GroupService.GroupAccessDeniedException ex) {
