@@ -33,4 +33,7 @@ public class ProfileResponse {
 
     @JsonProperty("phone_hash_suffix")
     private String phoneHashSuffix;
+
+    @JsonProperty("photo_version")
+    private Integer photoVersion;
 }

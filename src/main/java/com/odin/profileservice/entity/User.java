@@ -55,6 +55,10 @@ public class User {
     @Column(name = "last_seen_timestamp")
     private Long lastSeenTimestamp;
 
+    @Column(name = "photo_version", nullable = false)
+    @Builder.Default
+    private Integer photoVersion = 0;
+
     @Column(name = "account_created_at", nullable = false, updatable = false)
     private Timestamp accountCreatedAt;
 

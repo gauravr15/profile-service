@@ -6,6 +6,7 @@ import com.odin.profileservice.entity.User;
 import com.odin.profileservice.enums.PrivacyAttribute;
 import com.odin.profileservice.repo.UserRepository;
 import com.odin.profileservice.service.PrivacyEvaluationService;
+import com.odin.profileservice.service.StatusVisibilityService;
 import com.odin.profileservice.utility.ResponseObject;
 import com.odin.profileservice.constants.ResponseCodes;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,7 @@ public class UserProfileController {
 
     private final UserRepository userRepository;
     private final PrivacyEvaluationService privacyEvaluationService;
+    private final StatusVisibilityService statusVisibilityService;
     private final ResponseObject responseObject;
 
     /**
@@ -73,6 +75,7 @@ public class UserProfileController {
                     .userId(targetUserId)
                     .displayName(target.getDisplayName())
                     .phoneHashSuffix(getPhoneHashSuffix(target.getPhoneHash()))
+                    .photoVersion(target.getPhotoVersion())
                     .build();
 
             // Only include fields if permitted
@@ -93,6 +96,67 @@ public class UserProfileController {
             log.error("Failed to fetch profile", e);
             ResponseDTO response = responseObject.buildResponse(ResponseCodes.INTERNAL_SERVER_ERROR);
             return ResponseEntity.ok(response);
+        }
+    }
+
+    /**
+     * Increment photo version for the given user.
+     * Called by multimedia-service after a profile photo upload.
+     *
+     * @param customerId customer ID from gateway header
+     * @return updated photo version
+     */
+    @PostMapping("/photo-version/increment")
+    public ResponseEntity<ResponseDTO> incrementPhotoVersion(
+            @RequestBody Map<String, String> requestBody) {
+
+        String customerId = requestBody.get("customerId");
+        if (customerId == null || customerId.trim().isEmpty()) {
+            return ResponseEntity.ok(responseObject.buildResponse(ResponseCodes.INVALID_REQUEST));
+        }
+
+        try {
+            Optional<User> userOpt = userRepository.findById(customerId);
+            if (!userOpt.isPresent()) {
+                return ResponseEntity.ok(responseObject.buildResponse(ResponseCodes.NO_DATA_FOUND));
+            }
+
+            User user = userOpt.get();
+            int newVersion = (user.getPhotoVersion() != null ? user.getPhotoVersion() : 0) + 1;
+            user.setPhotoVersion(newVersion);
+            userRepository.save(user);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("photoVersion", newVersion);
+            result.put("customerId", customerId);
+
+            return ResponseEntity.ok(responseObject.buildResponse(ResponseCodes.SUCCESS_CODE, result));
+        } catch (Exception e) {
+            log.error("Failed to increment photo version for customerId={}", customerId, e);
+            return ResponseEntity.ok(responseObject.buildResponse(ResponseCodes.INTERNAL_SERVER_ERROR));
+        }
+    }
+
+    /**
+     * Fan-out endpoint: returns the set of user IDs allowed to see this user's profile photo updates.
+     * Reuses StatusVisibilityService logic for contact fan-out + privacy evaluation.
+     *
+     * @param requestBody must contain "customerId" of the photo uploader
+     * @return set of viewer customer IDs
+     */
+    @PostMapping("/photo/notify-upload")
+    public ResponseEntity<ResponseDTO> notifyPhotoUpload(@RequestBody Map<String, String> requestBody) {
+        String uploaderUserId = requestBody.get("customerId");
+        if (uploaderUserId == null || uploaderUserId.trim().isEmpty()) {
+            return ResponseEntity.ok(responseObject.buildResponse(ResponseCodes.INVALID_REQUEST));
+        }
+
+        try {
+            ResponseDTO visibilityResult = statusVisibilityService.updateStatusVisibility(uploaderUserId);
+            return ResponseEntity.ok(visibilityResult);
+        } catch (Exception e) {
+            log.error("Failed to compute photo notification fan-out for customerId={}", uploaderUserId, e);
+            return ResponseEntity.ok(responseObject.buildResponse(ResponseCodes.INTERNAL_SERVER_ERROR));
         }
     }
 
