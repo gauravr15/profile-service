@@ -371,9 +371,9 @@ public class PrivacyEvaluationService {
             String pattern = "privacy:" + targetUserId + ":*:*";
             invalidatePrefixedKeys(pattern);
             
-            log.debug("Cache invalidated for privacy settings change: target={}", targetUserId);
+            log.info("[PRIVACY-CACHE] ✅ Cache invalidated for privacy settings change: target={}", targetUserId);
         } catch (Exception e) {
-            log.warn("Redis cache invalidation failed for privacy settings change", e);
+            log.warn("[PRIVACY-CACHE] ⚠️ Redis cache invalidation failed for privacy settings change: target={}", targetUserId, e);
         }
     }
 

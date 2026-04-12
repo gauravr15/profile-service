@@ -28,6 +28,7 @@ public class PrivacySettingsService {
     private final ProfileRepository profileRepository;
     private final PhoneNumberHasher phoneNumberHasher;
     private final PrivacyEvaluationService privacyEvaluationService;
+    private final PrivacyFcmPublisher privacyFcmPublisher;
 
     /**
      * Get or create privacy settings for a user.
@@ -134,26 +135,45 @@ public class PrivacySettingsService {
                                          PrivacyLevel statusPrivacy, PrivacyLevel lastSeenPrivacy) {
         PrivacySettings settings = getOrCreateSettings(userId);
 
+        // Store old privacy levels for FCM publishing
+        PrivacyLevel oldPhotoPrivacy = settings.getPhotoPrivacy();
+        PrivacyLevel oldLastSeenPrivacy = settings.getLastSeenPrivacy();
+        PrivacyLevel oldStatusPrivacy = settings.getStatusPrivacy();
+
         boolean changed = false;
+        StringBuilder changeLog = new StringBuilder();
+        
         if (photoPrivacy != null && !photoPrivacy.equals(settings.getPhotoPrivacy())) {
+            changeLog.append(String.format("photo: %s→%s ", settings.getPhotoPrivacy(), photoPrivacy));
             settings.setPhotoPrivacy(photoPrivacy);
             changed = true;
         }
         if (statusPrivacy != null && !statusPrivacy.equals(settings.getStatusPrivacy())) {
+            changeLog.append(String.format("status: %s→%s ", settings.getStatusPrivacy(), statusPrivacy));
             settings.setStatusPrivacy(statusPrivacy);
             changed = true;
         }
         if (lastSeenPrivacy != null && !lastSeenPrivacy.equals(settings.getLastSeenPrivacy())) {
+            changeLog.append(String.format("lastSeen: %s→%s", settings.getLastSeenPrivacy(), lastSeenPrivacy));
             settings.setLastSeenPrivacy(lastSeenPrivacy);
             changed = true;
         }
 
         if (changed) {
             PrivacySettings updated = privacySettingsRepository.save(settings);
-            log.info("Updated privacy settings for user: {}", userId);
+            log.info("[PRIVACY-UPDATE] ✅ Privacy settings updated for user: {} | Changes: {}", userId, changeLog.toString());
             
-            // Invalidate privacy cache
+            // Invalidate privacy cache so next checks use updated settings
             privacyEvaluationService.invalidatePrivacySettingsCache(userId);
+            
+            // Publish FCM notifications to affected contacts (async via Kafka)
+            log.info("[PRIVACY-UPDATE] 📤 Triggering FCM publishing for userId={}", userId);
+            privacyFcmPublisher.publishPrivacyChange(
+                    userId,
+                    photoPrivacy != null ? photoPrivacy : oldPhotoPrivacy,
+                    lastSeenPrivacy != null ? lastSeenPrivacy : oldLastSeenPrivacy,
+                    oldPhotoPrivacy,
+                    oldLastSeenPrivacy);
             
             return updated;
         }
