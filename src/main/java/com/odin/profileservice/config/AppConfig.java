@@ -15,6 +15,7 @@ import org.springframework.web.client.RestTemplate;
 
 import com.odin.profileservice.dto.GroupCreatedEvent;
 import com.odin.profileservice.dto.NotificationDTO;
+import com.odin.profileservice.dto.PrivacyVisibilityChangeEvent;
 import com.odin.profileservice.dto.PublicKeyRefreshEvent;
 
 @Configuration
@@ -68,5 +69,19 @@ public class AppConfig {
     @Bean
     public KafkaTemplate<String, GroupCreatedEvent> groupEventKafkaTemplate() {
         return new KafkaTemplate<>(groupEventProducerFactory());
+    }
+
+    @Bean
+    public ProducerFactory<String, PrivacyVisibilityChangeEvent> privacyVisibilityChangeProducerFactory() {
+        Map<String, Object> configProps = new HashMap<>();
+        configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaUrl);
+        configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+        return new DefaultKafkaProducerFactory<>(configProps);
+    }
+
+    @Bean
+    public KafkaTemplate<String, PrivacyVisibilityChangeEvent> privacyVisibilityChangeKafkaTemplate() {
+        return new KafkaTemplate<>(privacyVisibilityChangeProducerFactory());
     }
 }

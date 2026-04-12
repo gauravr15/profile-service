@@ -1,5 +1,6 @@
 package com.odin.profileservice.service;
 
+import com.odin.profileservice.dto.PrivacyVisibilityChangeEvent;
 import com.odin.profileservice.entity.Contact;
 import com.odin.profileservice.entity.User;
 import com.odin.profileservice.enums.PrivacyLevel;
@@ -26,7 +27,7 @@ public class PrivacyFcmPublisher {
 
     private final ContactRepository contactRepository;
     private final UserRepository userRepository;
-    private final KafkaTemplate<String, Map<String, Object>> kafkaTemplate;
+    private final KafkaTemplate<String, PrivacyVisibilityChangeEvent> kafkaTemplate;
 
     private static final String KAFKA_TOPIC = "privacy-visibility-updates";
 
@@ -229,14 +230,13 @@ public class PrivacyFcmPublisher {
         }
 
         try {
-            Map<String, Object> event = new HashMap<>();
-            event.put("userId", userId);
-            event.put("action", action); // GRANTED or REVOKED
-            event.put("photoPrivacy", photoPrivacy.name());
-            event.put("lastSeenPrivacy", lastSeenPrivacy.name());
-            event.put("elegibleContacts", new ArrayList<>(affectedContacts));
-            event.put("contactCount", affectedContacts.size());
-            event.put("timestamp", System.currentTimeMillis());
+            PrivacyVisibilityChangeEvent event = PrivacyVisibilityChangeEvent.builder()
+                    .userId(userId)
+                    .photoPrivacy(photoPrivacy.name())
+                    .lastSeenPrivacy(lastSeenPrivacy.name())
+                    .eligibleContactIds(new ArrayList<>(affectedContacts))
+                    .timestamp(System.currentTimeMillis())
+                    .build();
 
             // Use userId as message key to ensure ordering
             kafkaTemplate.send(KAFKA_TOPIC, userId, event);
