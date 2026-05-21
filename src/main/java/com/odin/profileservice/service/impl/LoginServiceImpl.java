@@ -43,6 +43,7 @@ import com.odin.profileservice.utility.JwtTokenUtil;
 import com.odin.profileservice.utility.OtpService;
 import com.odin.profileservice.utility.ResponseObject;
 import com.odin.profileservice.utility.Utility;
+import com.odin.profileservice.utility.AccountStateValidator;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -71,6 +72,9 @@ public class LoginServiceImpl implements LoginService {
 	@Autowired
 	private RefreshTokenRepository refreshTokenRepo;
 
+	@Autowired
+	private AccountStateValidator accountStateValidator;
+
 	@Value("${max.incorrect.password.count}")
 	private String maxIncorrectPasswordCount;
 
@@ -96,8 +100,7 @@ public class LoginServiceImpl implements LoginService {
 		profileDTO.setMobile(
 				ObjectUtils.isEmpty(profileDTO.getMobile()) ? profileDTO.getEmail() : profileDTO.getMobile());
 		Profile profile = profileRepo.findByCustomerId(profileDTO.getCustomerId());
-		if (ObjectUtils.isEmpty(profile) || (!ObjectUtils.isEmpty(profile)
-				&& ObjectUtils.isEmpty(profile.getIsDeleted()) && profile.getIsDeleted())) {
+		if (ObjectUtils.isEmpty(profile) || Boolean.TRUE.equals(profile.getIsDeleted())) {
 			return response.buildResponse(LanguageConstants.EN, ResponseCodes.USER_NOT_EXISTS);
 		}
 		return response.buildResponse(LanguageConstants.EN, ResponseCodes.SUCCESS_CODE,
@@ -121,6 +124,10 @@ public class LoginServiceImpl implements LoginService {
 
 		Profile profile = profileRepo.findByMobileOrEmail(profileDTO.getMobile(), profileDTO.getEmail());
 		if (ObjectUtils.isEmpty(profile)) {
+			return response.buildResponse(LanguageConstants.EN, ResponseCodes.USER_NOT_EXISTS);
+		}
+
+		if (!accountStateValidator.isEligibleForAuth(profile)) {
 			return response.buildResponse(LanguageConstants.EN, ResponseCodes.USER_NOT_EXISTS);
 		}
 
@@ -187,6 +194,10 @@ public class LoginServiceImpl implements LoginService {
 		String flowAuthType = utility.getAuthType(ApplicationConstants.AUTH_FLOW_SIGNIN);
 		log.info("Signup flow auth type from Redis: {}", flowAuthType);
 		Profile checkProfile = profileRepo.findByMobileOrEmail(profileDTO.getMobile(), profileDTO.getEmail());
+
+		if (!accountStateValidator.isEligibleForAuth(checkProfile)) {
+			return response.buildResponse(LanguageConstants.EN, ResponseCodes.USER_NOT_EXISTS);
+		}
 
 		if (!ApplicationConstants.OTP.equalsIgnoreCase(flowAuthType) || !checkProfile.getAuth().isOtpLogin()) {
 			return response.buildResponse(ResponseCodes.INVALID_REQUEST);
@@ -257,8 +268,7 @@ public class LoginServiceImpl implements LoginService {
 	public ResponseDTO fetchCustomerId(String type, String mobile) {
 		log.info("Fetching customer profile by type : {} or identifier : {}", type, mobile);
 		Profile profile = profileRepo.findByMobileOrEmailAndCustomerType(mobile, mobile, type);
-		if (ObjectUtils.isEmpty(profile) || (!ObjectUtils.isEmpty(profile)
-				&& ObjectUtils.isEmpty(profile.getIsDeleted()) && profile.getIsDeleted())) {
+		if (ObjectUtils.isEmpty(profile) || Boolean.TRUE.equals(profile.getIsDeleted())) {
 			return response.buildResponse(LanguageConstants.EN, ResponseCodes.USER_NOT_EXISTS);
 		}
 		return response.buildResponse(LanguageConstants.EN, ResponseCodes.SUCCESS_CODE, profile.getCustomerId());

@@ -1,7 +1,9 @@
 package com.odin.profileservice.service.impl;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -107,6 +109,20 @@ public class AccountDeletionServiceImpl implements AccountDeletionService {
             log.warn("[DELETE-ACCOUNT] No mw_users entry found for customerId={}, proceeding with deletion", customerId);
         }
 
+        // --- Collect reverse-contact owners BEFORE any cleanup ---
+        // These are users who had saved the deleted user's phone — they receive FCM ACCOUNT_DELETED.
+        List<String> contactOwnerIds = new ArrayList<>();
+        if (globalPhoneHash != null) {
+            List<com.odin.profileservice.entity.Contact> reverseContacts =
+                    contactRepository.findByTargetGlobalPhoneHash(globalPhoneHash);
+            contactOwnerIds = reverseContacts.stream()
+                    .map(com.odin.profileservice.entity.Contact::getOwnerUserId)
+                    .filter(ownerId -> !customerId.equals(ownerId))
+                    .collect(Collectors.toList());
+            log.info("[DELETE-ACCOUNT] {} reverse contact(s) will be notified for customerId={}",
+                    contactOwnerIds.size(), customerId);
+        }
+
         // --- Step 3: Mark profile and auth as deleted in core service (via REST) ---
         profile.setIsDeleted(true);
         profile.setIsActive(false);
@@ -183,6 +199,7 @@ public class AccountDeletionServiceImpl implements AccountDeletionService {
                 .customerId(customerId)
                 .globalPhoneHash(globalPhoneHash)
                 .timestamp(System.currentTimeMillis())
+                .contactOwnerIds(contactOwnerIds)
                 .build();
         accountDeletionProducer.publish(event);
         log.info("[DELETE-ACCOUNT] Account deletion completed successfully for customerId={}", customerId);

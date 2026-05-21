@@ -19,6 +19,7 @@ import com.odin.profileservice.enums.NotificationChannel;
 import com.odin.profileservice.enums.OTPType;
 import com.odin.profileservice.repo.ProfileRepository;
 import com.odin.profileservice.service.OTPGenerationService;
+import com.odin.profileservice.utility.AccountStateValidator;
 import com.odin.profileservice.utility.NotificationUtility;
 import com.odin.profileservice.utility.OtpService;
 import com.odin.profileservice.utility.ResponseObject;
@@ -40,6 +41,9 @@ public class OTPGenerationServiceImpl implements OTPGenerationService{
 	
 	@Autowired
 	private ResponseObject response;
+
+	@Autowired
+	private AccountStateValidator accountStateValidator;
 	
 	@Autowired
 	private ProfileRepository profileRepo;
@@ -54,9 +58,13 @@ public class OTPGenerationServiceImpl implements OTPGenerationService{
 	public ResponseDTO generateOtp(HttpServletRequest req, OtpRequestDTO dto) {
 		try {
 			Profile profile = profileRepo.findByMobileOrEmail(dto.getMobile(), dto.getEmail());
-			if(null == profile) {
+			if (null == profile) {
 				return response.buildResponse(ResponseCodes.USER_NOT_EXISTS);
-			}else if(null == dto.getType()){
+			}
+			if (!accountStateValidator.isEligibleForAuth(profile)) {
+				return response.buildResponse(ResponseCodes.USER_NOT_EXISTS);
+			}
+			if (null == dto.getType()) {
 				return response.buildResponse(ResponseCodes.INVALID_REQUEST);
 			}else {
 				if (dto.getMobile().isEmpty() && dto.getEmail().isEmpty()) {
