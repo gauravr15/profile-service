@@ -24,5 +24,6 @@ public class ApplicationConstants {
 	public static final String KEY_REFRESH = "/refresh";
 	public static final String GROUPS = "/groups";
 	public static final String USERS = "/users";
+	public static final String DELETE = "/delete";
 
 }
