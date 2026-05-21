@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 /**
  * Kafka event published when a user deletes their account.
  * Consumed by downstream services to remove contact sync data for this user.
@@ -22,4 +24,6 @@ public class AccountDeletionEvent {
     private String globalPhoneHash;
 
     private long timestamp;
+
+    private List<String> contactOwnerIds;
 }
