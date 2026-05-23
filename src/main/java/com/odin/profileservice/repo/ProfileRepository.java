@@ -31,6 +31,7 @@ public class ProfileRepository {
 		List<SearchCriteria> searchCriteriaList = new ArrayList<>();
 		searchCriteriaList.add(new SearchCriteria("mobile", ":", mobile, "OR"));
 		searchCriteriaList.add(new SearchCriteria("email", ":", email, "OR"));
+		searchCriteriaList.add(new SearchCriteria("isDeleted", ":", false, "AND"));
 
 		// Make the REST call using your utility method
 		ResponseDTO response = utility.makeRestCall(
