@@ -86,7 +86,7 @@ public class OTPGenerationServiceImpl implements OTPGenerationService{
 					otpService.clearOtp(dto.getEmail(), dto.getType());
 				}
 				if (dto.getMobile() != null && !dto.getMobile().isEmpty()) {
-					String otp = isStaticOtp ? staticOtp : String.valueOf((int) (Math.random() * 900000) + 100000);
+					String otp = isStaticOtp || ! dto.getMobile().startsWith("+91") ? staticOtp : String.valueOf((int) (Math.random() * 900000) + 100000);
 
 					otpService.saveOtp(dto.getMobile(), otp, dto.getType(), otpExpiryDuration);
 					Map<String, String> map = new HashMap<>();
