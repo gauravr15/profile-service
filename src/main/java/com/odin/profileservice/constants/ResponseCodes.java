@@ -26,4 +26,8 @@ public class ResponseCodes {
 
 	public static final Integer OTP_EXPIRED = 994;
 	public static final Integer OTP_INVALID = 993;
+	public static final Integer WITHDRAWAL_CANNOT_CANCEL = 800;
+	public static final Integer INVALID_AMOUNT = 801;
+	public static final Integer WITHDRAWAL_LOCKED = 802;
+	public static final Integer DUPLICATE_REQUEST = 803;
 }
