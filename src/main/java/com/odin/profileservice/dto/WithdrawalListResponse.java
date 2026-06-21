@@ -1,6 +1,7 @@
 package com.odin.profileservice.dto;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.time.LocalDateTime;
 
 import lombok.Builder;
@@ -17,4 +18,6 @@ public class WithdrawalListResponse {
     private String status;
 
     private LocalDateTime requestTime;
+    
+    private BigDecimal cashBackAmount;
 }

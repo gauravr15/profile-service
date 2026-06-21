@@ -9,7 +9,7 @@ public interface WithdrawalService {
 
 	ResponseDTO createWithdrawalRequest(Integer customerId, WithdrawalRequestDto request);
 
-	ResponseDTO getRequests(Integer customerId);
+	ResponseDTO getRequests(Integer customerId, Long scheme);
 
 	ResponseDTO cancelWithdrawal(Integer customerId, Long requestId);
 

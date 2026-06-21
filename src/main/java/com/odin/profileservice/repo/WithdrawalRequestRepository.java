@@ -90,6 +90,8 @@ public interface WithdrawalRequestRepository extends JpaRepository<WithdrawalReq
 	Long countByCustomerIdAndStatusIn(Integer customerId, List<WithdrawalStatus> statusList);
 
 	List<WithdrawalRequest> findByCustomerIdOrderByRequestTimeDesc(Integer customerId);
+	
+	List<WithdrawalRequest> findByCustomerIdAndInvestmentIdOrderByRequestTimeDesc(Integer customerId, Long schemeId);
 
 	boolean existsByCustomerIdAndInvestmentIdAndStatus(Integer customerId, Long investmentId, WithdrawalStatus status);
 

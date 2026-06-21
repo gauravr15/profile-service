@@ -3,12 +3,14 @@ package com.odin.profileservice.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.ObjectUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.odin.profileservice.constants.ApplicationConstants;
@@ -52,11 +54,14 @@ public class WithdrawalController {
 
     @GetMapping("/withdrawal/requests")
     public ResponseEntity<Object> getRequests(
-            @RequestHeader("customerId") String customerId) {
-
+            @RequestHeader("customerId") String customerId, @RequestParam(required = false) String schemeId) {
+    	Long scheme = 0l;
+    	if(!ObjectUtils.isEmpty(schemeId)) {
+    		scheme = Long.valueOf(schemeId);
+    	}
         ResponseDTO dto =
                 withdrawalService.getRequests(
-                        Integer.valueOf(customerId));
+                        Integer.valueOf(customerId), scheme);
 
         return new ResponseEntity<>(dto, HttpStatus.OK);
     }

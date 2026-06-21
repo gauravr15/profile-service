@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -186,15 +187,15 @@ public class WithdrawalServiceImpl implements WithdrawalService {
 		BigDecimal cashbackToBeCredited = remainingPrincipal.multiply(cashbackPercent).divide(BigDecimal.valueOf(100),
 				2, RoundingMode.HALF_UP);
 
-		LocalDateTime cashbackEligibleDate = LocalDateTime.now();//.plusDays(30);
+		LocalDateTime cashbackEligibleDate = LocalDateTime.now();// .plusDays(30);
 
 		BigDecimal total = request.getPrincipalAmount().add(request.getProfitAmount()).add(request.getCashbackAmount());
 
 		WithdrawalRequest entity = WithdrawalRequest.builder().customerId(customerId).investmentId(investment.getId())
 				.requestedAmount(total).principalAmount(request.getPrincipalAmount())
 				.profitAmount(request.getProfitAmount()).cashbackAmount(request.getCashbackAmount())
-				.cashbackToBeCredited(cashbackToBeCredited)
-				.requestTime(LocalDateTime.now()).status(WithdrawalStatus.PENDING).build();
+				.cashbackToBeCredited(cashbackToBeCredited).requestTime(LocalDateTime.now())
+				.status(WithdrawalStatus.PENDING).build();
 
 		withdrawalRepo.save(entity);
 
@@ -211,12 +212,21 @@ public class WithdrawalServiceImpl implements WithdrawalService {
 	}
 
 	@Override
-	public ResponseDTO getRequests(Integer customerId) {
-
-		List<WithdrawalListResponse> result = withdrawalRepo.findByCustomerIdOrderByRequestTimeDesc(customerId).stream()
-				.map(x -> WithdrawalListResponse.builder().requestId(x.getId()).amount(x.getRequestedAmount())
-						.status(x.getStatus().name()).requestTime(x.getRequestTime()).build())
-				.collect(Collectors.toList());
+	public ResponseDTO getRequests(Integer customerId, Long scheme) {
+		List<WithdrawalListResponse> result = new ArrayList<>();
+		if (scheme != 0) {
+			result = withdrawalRepo.findByCustomerIdAndInvestmentIdOrderByRequestTimeDesc(customerId, scheme).stream()
+					.map(x -> WithdrawalListResponse.builder().cashBackAmount(x.getCashbackAmount())
+							.requestId(x.getId()).amount(x.getRequestedAmount()).status(x.getStatus().name())
+							.requestTime(x.getRequestTime()).build())
+					.collect(Collectors.toList());
+		} else {
+			result = withdrawalRepo.findByCustomerIdOrderByRequestTimeDesc(customerId).stream()
+					.map(x -> WithdrawalListResponse.builder().cashBackAmount(x.getCashbackAmount())
+							.requestId(x.getId()).amount(x.getRequestedAmount()).status(x.getStatus().name())
+							.requestTime(x.getRequestTime()).build())
+					.collect(Collectors.toList());
+		}
 
 		return response.buildResponse(ResponseCodes.SUCCESS_CODE, result);
 	}
@@ -230,9 +240,9 @@ public class WithdrawalServiceImpl implements WithdrawalService {
 		if (request == null) {
 			return response.buildResponse(ResponseCodes.NO_DATA_FOUND);
 		}
-		
+
 		if (request.getStatus() == WithdrawalStatus.PROCESSING) {
-		    return response.buildResponse(ResponseCodes.WITHDRAWAL_CANNOT_CANCEL);
+			return response.buildResponse(ResponseCodes.WITHDRAWAL_CANNOT_CANCEL);
 		}
 
 		if (Boolean.TRUE.equals(request.getReportGenerated())) {
