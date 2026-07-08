@@ -1,5 +1,8 @@
 package com.odin.profileservice.service.impl;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -166,6 +169,9 @@ public class LoginServiceImpl implements LoginService {
 			if (Objects.isNull(existing)) {
 				refreshTokenRepo.save(rt);
 			} else {
+				log.info("[BACKEND_LOGIN_REFRESH_REPLACE] customerFp={} incomingDeviceFp={} replacedTokenFp={} replacedDeviceFp={} lookupBy=customerIdOnly",
+						fingerprint(profile.getCustomerId()), fingerprint(deviceSignature),
+						fingerprint(existing.getRefreshToken()), fingerprint(existing.getDeviceSignature()));
 				refreshTokenRepo.delete(existing);
 				refreshTokenRepo.save(rt);
 			}
@@ -251,6 +257,9 @@ public class LoginServiceImpl implements LoginService {
 			if (Objects.isNull(existing)) {
 				refreshTokenRepo.save(rt);
 			} else {
+				log.info("[BACKEND_LOGIN_REFRESH_REPLACE] customerFp={} incomingDeviceFp={} replacedTokenFp={} replacedDeviceFp={} lookupBy=customerIdOnly",
+						fingerprint(checkProfile.getCustomerId()), fingerprint(deviceSignature),
+						fingerprint(existing.getRefreshToken()), fingerprint(existing.getDeviceSignature()));
 				refreshTokenRepo.delete(existing);
 				refreshTokenRepo.save(rt);
 			}
@@ -439,6 +448,27 @@ public class LoginServiceImpl implements LoginService {
 
         return response.buildResponse(LanguageConstants.EN, ResponseCodes.SUCCESS_CODE, currentVersionStr);
     }
+
+	private String fingerprint(Object value) {
+		if (value == null) {
+			return "null";
+		}
+		String text = String.valueOf(value);
+		if (text.isEmpty()) {
+			return "empty";
+		}
+		try {
+			MessageDigest digest = MessageDigest.getInstance("SHA-256");
+			byte[] hash = digest.digest(text.getBytes(StandardCharsets.UTF_8));
+			StringBuilder builder = new StringBuilder();
+			for (int i = 0; i < 4 && i < hash.length; i++) {
+				builder.append(String.format("%02x", hash[i]));
+			}
+			return builder.toString();
+		} catch (NoSuchAlgorithmException e) {
+			return "sha256-unavailable";
+		}
+	}
 
     private boolean keysMatch(String key1, String key2) {
         if (key1 == null || key2 == null)
