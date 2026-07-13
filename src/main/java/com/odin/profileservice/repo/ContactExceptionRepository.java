@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Collection;
 
 /**
  * Repository for ContactException entity - handles privacy exceptions for specific contacts.
@@ -36,4 +37,7 @@ public interface ContactExceptionRepository extends JpaRepository<ContactExcepti
      * Delete an exception.
      */
     long deleteByOwnerUserIdAndExceptionGlobalPhoneHash(String ownerUserId, String exceptionGlobalPhoneHash);
+
+    List<ContactException> findByOwnerUserIdInAndExceptionGlobalPhoneHash(
+            Collection<String> ownerUserIds, String exceptionGlobalPhoneHash);
 }

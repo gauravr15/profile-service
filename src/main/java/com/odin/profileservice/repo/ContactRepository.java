@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Collection;
 
 /**
  * Repository for Contact entity - handles contact relationship persistence.
@@ -51,4 +52,7 @@ public interface ContactRepository extends JpaRepository<Contact, String> {
      * Delete a specific contact relationship.
      */
     long deleteByOwnerUserIdAndTargetGlobalPhoneHash(String ownerUserId, String targetGlobalPhoneHash);
+
+    List<Contact> findByOwnerUserIdInAndTargetGlobalPhoneHash(
+            Collection<String> ownerUserIds, String targetGlobalPhoneHash);
 }

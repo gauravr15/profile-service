@@ -67,6 +67,15 @@ public class ProfileRepository {
 		return utility.getAnInstance(response.getData(), Profile.class);
 	}
 
+	public List<Profile> findByCustomerIds(List<Integer> ids) {
+		List<SearchCriteria> searchCriteriaList = new ArrayList<>();
+		searchCriteriaList.add(new SearchCriteria("customerId", "IN", ids, ""));
+		ResponseDTO response = utility.makeRestCall(
+				coreUpdateUrl + ApplicationConstants.CUSTOMER + ApplicationConstants.DETAILS,
+				searchCriteriaList, HttpMethod.POST, ResponseDTO.class);
+		return utility.getInstances(response.getData(), Profile.class);
+	}
+
 	public Profile update(Profile profile) {
 		ResponseDTO response = utility.makeRestCall(
 				coreUpdateUrl + ApplicationConstants.CUSTOMER + ApplicationConstants.UPDATE, profile, HttpMethod.POST,

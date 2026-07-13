@@ -81,7 +81,7 @@ public class ContactSyncController {
 
         try {
             // Validate request
-            if (request.getContacts() == null || request.getContacts().isEmpty()) {
+            if (request == null || request.getContacts() == null) {
                 ResponseDTO response = responseObject.buildResponse(ResponseCodes.INVALID_REQUEST);
                 return ResponseEntity.ok(response);
             }
@@ -136,8 +136,6 @@ public class ContactSyncController {
                                        " " + (userProfile.getLastName() != null ? userProfile.getLastName() : ""))
                             .build();
                         
-                        log.info("User object before save - userId: {}, globalPhoneHash: {}", newUser.getUserId(), newUser.getGlobalPhoneHash());
-                        log.info("Creating new middleware user with userId: {}, globalPhoneHash: {}", customerId, globalPhoneHash);
                         userRepository.save(newUser);
                         log.info("User object after save - userId: {}", newUser.getUserId());
                         middlewareUserId = newUser.getUserId();
@@ -164,10 +162,12 @@ public class ContactSyncController {
             log.info("User synced successfully with middlewareUserId: {}", middlewareUserId);
 
             // Ensure default privacy settings exist (EVERYONE for first-time users)
+			boolean criticalSyncFailure = false;
             try {
                 privacySettingsService.getOrCreateSettings(middlewareUserId);
             } catch (Exception ex) {
                 log.warn("Failed to ensure privacy settings for user {}: {}", middlewareUserId, ex.getMessage());
+				criticalSyncFailure = true;
             }
 
             int syncedCount = 0;
@@ -229,7 +229,7 @@ public class ContactSyncController {
                         rawToNormalizedMap.put(normalizedPhone, contact.getPhoneNumber());
                     }
                 } catch (Exception e) {
-                    log.debug("Failed to normalize contact phone: {}", contact.getPhoneNumber());
+					log.debug("Failed to normalize contact phone");
                 }
             }
             
@@ -241,7 +241,7 @@ public class ContactSyncController {
                     registeredProfiles = profileRepository.findLikeMobileNumber(new ArrayList<>(normalizedPhones), true);
                 } catch (Exception e) {
                     log.warn("Failed to fetch registered users from Core", e);
-                    // Continue processing - Core might be temporarily unavailable
+					criticalSyncFailure = true;
                 }
             }
             
@@ -310,6 +310,7 @@ public class ContactSyncController {
                                     }
                                 } catch (Exception e) {
                                     log.warn("Failed to sync contact user to middleware: {}", e.getMessage());
+									criticalSyncFailure = true;
                                 }
                             }
                             
@@ -328,8 +329,14 @@ public class ContactSyncController {
                 } catch (Exception e) {
                     // Log error but continue with other contacts (never log raw phone)
                     log.debug("Failed to sync contact", e);
+					criticalSyncFailure = true;
                 }
             }
+
+			if (criticalSyncFailure) {
+				log.warn("Contact sync incomplete. customerId={}, state=SYNC_FAILED", customerId);
+				return ResponseEntity.ok(responseObject.buildResponse(ResponseCodes.INTERNAL_SERVER_ERROR));
+			}
 
             // Build response
             ContactSyncResponse contactSyncResponse = ContactSyncResponse.builder()
@@ -341,9 +348,9 @@ public class ContactSyncController {
             
             ResponseDTO response = responseObject.buildResponse(ResponseCodes.SUCCESS_CODE, contactSyncResponse);
             
-            if (Boolean.valueOf(updateSyncTime)) {
-    			updateSyncDetails(customerId);
-    		}
+			// A successful request, including an explicitly empty list, is the
+			// authoritative distinction between SYNCED and never synchronized.
+			updateSyncDetails(customerId);
             
             return ResponseEntity.ok(response);
 

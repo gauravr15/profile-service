@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Collection;
 
 /**
  * Repository for BlockedContact entity - handles blocked user relationships.
@@ -34,4 +35,10 @@ public interface BlockedContactRepository extends JpaRepository<BlockedContact, 
      * Delete a block relationship.
      */
     long deleteByBlockerUserIdAndBlockedGlobalPhoneHash(String blockerUserId, String blockedGlobalPhoneHash);
+
+    List<BlockedContact> findByBlockerUserIdInAndBlockedGlobalPhoneHash(
+            Collection<String> blockerUserIds, String blockedGlobalPhoneHash);
+
+    List<BlockedContact> findByBlockerUserIdAndBlockedGlobalPhoneHashIn(
+            String blockerUserId, Collection<String> blockedGlobalPhoneHashes);
 }
