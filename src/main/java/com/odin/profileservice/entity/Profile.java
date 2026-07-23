@@ -12,7 +12,7 @@ import lombok.ToString;
 
 @Data
 @Builder
-@ToString
+@ToString(onlyExplicitlyIncluded = true)
 @AllArgsConstructor
 @NoArgsConstructor
 public class Profile {

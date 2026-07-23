@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,6 +26,8 @@ import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
 @Slf4j
 @RestController
@@ -34,6 +37,9 @@ public class GroupController {
 
     private final GroupService groupService;
     private final ResponseObject responseObject;
+
+    @Value("${profile.membership.service-key:}")
+    private String membershipServiceKey;
 
     @PostMapping(ApplicationConstants.GROUPS)
     public ResponseEntity<ResponseDTO> createGroup(
@@ -118,7 +124,19 @@ public class GroupController {
     @GetMapping(ApplicationConstants.GROUPS + "/{groupId}/members/{customerId}")
     public ResponseEntity<ResponseDTO> isUserMemberOfGroup(
             @PathVariable String groupId,
-            @PathVariable String customerId) {
+            @PathVariable String customerId,
+            @RequestHeader(value = "X-Internal-Service-Key", required = false) String suppliedServiceKey) {
+        if (!isAuthorizedMembershipCaller(suppliedServiceKey)) {
+            ResponseDTO response = responseObject.buildResponse(
+                    StringUtils.hasText(membershipServiceKey)
+                            ? ResponseCodes.FORBIDDEN
+                            : ResponseCodes.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<>(
+                    response,
+                    StringUtils.hasText(membershipServiceKey)
+                            ? HttpStatus.FORBIDDEN
+                            : HttpStatus.SERVICE_UNAVAILABLE);
+        }
         try {
             boolean member = groupService.isMember(groupId, customerId);
             Map<String, Object> payload = new HashMap<>();
@@ -135,6 +153,16 @@ public class GroupController {
             ResponseDTO response = responseObject.buildResponse(ResponseCodes.INTERNAL_SERVER_ERROR);
             return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
         }
+    }
+
+    private boolean isAuthorizedMembershipCaller(String suppliedServiceKey) {
+        if (!StringUtils.hasText(membershipServiceKey)
+                || !StringUtils.hasText(suppliedServiceKey)) {
+            return false;
+        }
+        return MessageDigest.isEqual(
+                membershipServiceKey.getBytes(StandardCharsets.UTF_8),
+                suppliedServiceKey.getBytes(StandardCharsets.UTF_8));
     }
 
     private GroupResponse toResponse(Group group) {

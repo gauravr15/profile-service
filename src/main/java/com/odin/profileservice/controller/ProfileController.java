@@ -21,6 +21,7 @@ import com.odin.profileservice.dto.ProfileDTO;
 import com.odin.profileservice.dto.ResponseDTO;
 import com.odin.profileservice.enums.CustomerType;
 import com.odin.profileservice.factory.CustomerFactory;
+import com.odin.profileservice.service.ContactDiscoveryException;
 import com.odin.profileservice.utility.PublicKeyRefreshProducer;
 import com.odin.profileservice.utility.ResponseObject;
 
@@ -54,9 +55,25 @@ public class ProfileController {
 	@PostMapping(ApplicationConstants.BULK + ApplicationConstants.CUSTOMER + ApplicationConstants.DETAILS)
 	public ResponseEntity<Object> fetchCustomerByMobile(HttpServletRequest servlet,
 			@RequestBody MobileListDTO mobiles) {
-		CustomerType customerType = CustomerType.CUSTOMER;
-		ResponseDTO response = factory.getInstance(customerType).fetchCustomerByMobile(servlet, customerType, mobiles);
-		return new ResponseEntity<>(response, HttpStatus.OK);
+		try {
+			CustomerType customerType = CustomerType.CUSTOMER;
+			ResponseDTO result = factory.getInstance(customerType)
+					.fetchCustomerByMobile(servlet, customerType, mobiles);
+			return new ResponseEntity<>(result, HttpStatus.OK);
+		} catch (ContactDiscoveryException ex) {
+			ResponseDTO result = ResponseDTO.builder()
+					.statusCode(ResponseCodes.FAILURE_CODE)
+					.status(ResponseCodes.FAILURE)
+					.message(ex.getCode())
+					.build();
+			org.springframework.http.HttpHeaders headers =
+					new org.springframework.http.HttpHeaders();
+			if (ex.getRetryAfterSeconds() > 0) {
+				headers.set("Retry-After",
+						String.valueOf(ex.getRetryAfterSeconds()));
+			}
+			return new ResponseEntity<>(result, headers, ex.getStatus());
+		}
 	}
 	
 	@PostMapping(ApplicationConstants.CUSTOMER + ApplicationConstants.BULK + ApplicationConstants.KEY)

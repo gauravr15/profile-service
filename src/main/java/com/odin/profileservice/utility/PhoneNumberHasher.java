@@ -102,7 +102,7 @@ public class PhoneNumberHasher {
                 try {
                     Phonenumber.PhoneNumber intlNumber = phoneNumberUtil.parse("+" + sanitized, null);
                     if (phoneNumberUtil.isValidNumber(intlNumber)) {
-                        log.debug("Auto-corrected international number by prepending '+': {}", sanitized);
+						log.debug("Phone normalization applied international-prefix fallback");
                         return formatE164(intlNumber);
                     }
                 } catch (NumberParseException ignored) {
@@ -110,7 +110,7 @@ public class PhoneNumberHasher {
                 }
             }
 
-            throw new IllegalArgumentException("Invalid phone number: " + phoneNumber);
+			throw new IllegalArgumentException("Invalid phone input");
         } catch (NumberParseException e) {
             // Last resort: try prepending '+' even if initial parse threw exception
             if (!sanitized.startsWith("+")) {
@@ -121,7 +121,7 @@ public class PhoneNumberHasher {
                     }
                 } catch (NumberParseException ignored) {}
             }
-            throw new IllegalArgumentException("Failed to parse phone number: " + phoneNumber, e);
+			throw new IllegalArgumentException("Phone normalization failed");
         }
     }
 
@@ -325,4 +325,3 @@ public class PhoneNumberHasher {
         logger.info("Registered pepper version: {}", version);
     }
 }
-

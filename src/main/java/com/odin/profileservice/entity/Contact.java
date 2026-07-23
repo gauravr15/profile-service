@@ -40,6 +40,12 @@ public class Contact {
     @Column(name = "target_global_phone_hash", nullable = false, length = 64)
     private String targetGlobalPhoneHash;
 
+    @Column(name = "target_global_phone_token", length = 64)
+    private String targetGlobalPhoneToken;
+
+    @Column(name = "target_global_phone_token_version")
+    private Integer targetGlobalPhoneTokenVersion;
+
     // NOTE: contact_name is NOT persisted on server (client-side only)
     // This ensures privacy: server never stores contact labels assigned by user
 

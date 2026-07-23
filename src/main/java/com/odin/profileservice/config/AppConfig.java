@@ -18,6 +18,8 @@ import com.odin.profileservice.dto.GroupCreatedEvent;
 import com.odin.profileservice.dto.NotificationDTO;
 import com.odin.profileservice.dto.PrivacyVisibilityChangeEvent;
 import com.odin.profileservice.dto.PublicKeyRefreshEvent;
+import com.odin.profileservice.service.ContactTokenService;
+import com.odin.profileservice.utility.PhoneNumberHasher;
 
 @Configuration
 public class AppConfig {
@@ -28,6 +30,13 @@ public class AppConfig {
     @Bean
     public RestTemplate restTemplate() {
         return new RestTemplate();
+    }
+
+    @Bean
+    public ContactTokenService contactTokenService(
+            PhoneNumberHasher phoneNumberHasher,
+            ContactTokenProperties contactTokenProperties) {
+        return new ContactTokenService(phoneNumberHasher, contactTokenProperties);
     }
     
     @Bean
@@ -92,6 +101,10 @@ public class AppConfig {
         configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaUrl);
         configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+        configProps.put(ProducerConfig.ACKS_CONFIG, "all");
+        configProps.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+        configProps.put(ProducerConfig.RETRIES_CONFIG, Integer.MAX_VALUE);
+        configProps.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5);
         return new DefaultKafkaProducerFactory<>(configProps);
     }
 

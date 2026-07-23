@@ -10,7 +10,7 @@ import lombok.ToString;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-@ToString
+@ToString(onlyExplicitlyIncluded = true)
 public class CustomerDetailsDTO {
 
 	private String mobile;

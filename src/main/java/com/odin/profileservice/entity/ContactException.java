@@ -38,6 +38,12 @@ public class ContactException {
     @Column(name = "exception_global_phone_hash", nullable = false, length = 64)
     private String exceptionGlobalPhoneHash;
 
+    @Column(name = "exception_global_phone_token", length = 64)
+    private String exceptionGlobalPhoneToken;
+
+    @Column(name = "exception_global_phone_token_version")
+    private Integer exceptionGlobalPhoneTokenVersion;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "exception_type", nullable = false, length = 20)
     private ContactExceptionType exceptionType;

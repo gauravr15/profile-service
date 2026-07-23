@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.util.List;
 
@@ -16,6 +17,7 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@ToString(onlyExplicitlyIncluded = true)
 public class ContactSyncRequest {
 
     @JsonProperty("contacts")
@@ -31,6 +33,7 @@ public class ContactSyncRequest {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    @ToString(onlyExplicitlyIncluded = true)
     public static class ContactItem {
         @JsonProperty("phone_number")
         private String phoneNumber;

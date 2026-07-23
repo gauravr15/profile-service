@@ -27,6 +27,7 @@ public class PrivacySettingsService {
     private final UserRepository userRepository;
     private final ProfileRepository profileRepository;
     private final PhoneNumberHasher phoneNumberHasher;
+    private final ContactTokenService contactTokenService;
     private final PrivacyEvaluationService privacyEvaluationService;
     private final PrivacyFcmPublisher privacyFcmPublisher;
 
@@ -86,6 +87,8 @@ public class PrivacySettingsService {
             // Check if user already exists in middleware
             String normalizedUserPhone = normalizePhoneSimple(userProfile.getMobile());
             String globalPhoneHash = phoneNumberHasher.hashWithGlobalPepper(normalizedUserPhone);
+                ContactTokenService.LookupTokenMaterial tokenMaterial =
+                    contactTokenService.deriveLookupTokensFromCanonical(normalizedUserPhone);
             Optional<User> middlewareUser = userRepository.findByGlobalPhoneHash(globalPhoneHash);
             
             if (!middlewareUser.isPresent()) {
@@ -96,8 +99,12 @@ public class PrivacySettingsService {
                 User newUser = User.builder()
                         .userId(userId)
                         .phoneHash(phoneHash)
+                    .phoneToken(tokenMaterial.getCurrentToken())
+                    .phoneTokenVersion(tokenMaterial.getCurrentVersion())
                         .phoneSalt(phoneSalt)
                         .globalPhoneHash(globalPhoneHash)
+                    .globalPhoneToken(tokenMaterial.getCurrentToken())
+                    .globalPhoneTokenVersion(tokenMaterial.getCurrentVersion())
                         .pepperVersion(1)
                         .displayName((userProfile.getFirstName() != null ? userProfile.getFirstName() : "") + 
                                    " " + (userProfile.getLastName() != null ? userProfile.getLastName() : ""))

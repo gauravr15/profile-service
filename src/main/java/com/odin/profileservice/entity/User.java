@@ -34,11 +34,23 @@ public class User {
     @Column(name = "phone_hash", nullable = false, unique = true, length = 64)
     private String phoneHash;
 
+    @Column(name = "phone_token", length = 64)
+    private String phoneToken;
+
+    @Column(name = "phone_token_version")
+    private Integer phoneTokenVersion;
+
     @Column(name = "phone_salt", nullable = false, length = 32)
     private String phoneSalt;
 
     @Column(name = "global_phone_hash", nullable = false, unique = true, length = 64)
     private String globalPhoneHash;
+
+    @Column(name = "global_phone_token", length = 64)
+    private String globalPhoneToken;
+
+    @Column(name = "global_phone_token_version")
+    private Integer globalPhoneTokenVersion;
 
     @Column(name = "pepper_version", nullable = false)
     private Integer pepperVersion;

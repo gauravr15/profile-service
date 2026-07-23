@@ -27,18 +27,8 @@ public class ContactService {
     private final ContactRepository contactRepository;
     private final UserRepository userRepository;
     private final PhoneNumberHasher phoneNumberHasher;
+    private final ContactTokenService contactTokenService;
     private final PrivacyEvaluationService privacyEvaluationService;
-
-    /**
-     * Helper method to extract last 4 characters of hash for opaque logging.
-     * Used in log statements to maintain debuggability without exposing full hash.
-     */
-    private String getOpaqueHashSuffix(String hash) {
-        if (hash == null || hash.length() < 4) {
-            return hash;
-        }
-        return hash.substring(hash.length() - 4);
-    }
 
     /**
      * Save a contact by phone number.
@@ -57,10 +47,12 @@ public class ContactService {
             // Normalize and hash target phone number using GLOBAL pepper (deterministic)
             String normalizedPhone = phoneNumberHasher.normalizePhoneNumber(targetPhoneNumber, region);
             String targetGlobalPhoneHash = phoneNumberHasher.hashWithGlobalPepper(normalizedPhone);
+            ContactTokenService.LookupTokenMaterial tokenMaterial =
+                    contactTokenService.deriveLookupTokensFromCanonical(normalizedPhone);
 
             // Check if contact already exists
             if (contactRepository.existsByOwnerUserIdAndTargetGlobalPhoneHash(ownerUserId, targetGlobalPhoneHash)) {
-                log.debug("Contact already saved: owner={}", ownerUserId);
+				log.debug("Contact relationship already exists");
                 return true;
             }
 
@@ -68,17 +60,19 @@ public class ContactService {
             Contact contact = Contact.builder()
                     .ownerUserId(ownerUserId)
                     .targetGlobalPhoneHash(targetGlobalPhoneHash)
+                    .targetGlobalPhoneToken(tokenMaterial.getCurrentToken())
+                    .targetGlobalPhoneTokenVersion(tokenMaterial.getCurrentVersion())
                     .build();
 
             contactRepository.save(contact);
-            log.info("Contact saved: owner={}, target={}", ownerUserId, getOpaqueHashSuffix(targetGlobalPhoneHash));
+			log.info("Contact relationship saved");
 
             // Invalidate privacy cache
             privacyEvaluationService.invalidateContactCache(ownerUserId, targetGlobalPhoneHash);
 
             return true;
         } catch (Exception e) {
-            log.error("Failed to save contact", e);
+			log.error("Failed to save contact category={}", e.getClass().getSimpleName());
             return false;
         }
     }
@@ -103,10 +97,11 @@ public class ContactService {
         try {
             String normalizedPhone = phoneNumberHasher.normalizePhoneNumber(targetPhoneNumber, region);
             String targetGlobalPhoneHash = phoneNumberHasher.hashWithGlobalPepper(normalizedPhone);
+            contactTokenService.deriveLookupTokensFromCanonical(normalizedPhone);
 
             return contactRepository.existsByOwnerUserIdAndTargetGlobalPhoneHash(ownerUserId, targetGlobalPhoneHash);
         } catch (Exception e) {
-            log.error("Failed to check if contact is saved", e);
+			log.error("Failed to check contact relationship category={}", e.getClass().getSimpleName());
             return false;
         }
     }
@@ -125,16 +120,17 @@ public class ContactService {
         try {
             String normalizedPhone = phoneNumberHasher.normalizePhoneNumber(targetPhoneNumber, region);
             String targetGlobalPhoneHash = phoneNumberHasher.hashWithGlobalPepper(normalizedPhone);
+            contactTokenService.deriveLookupTokensFromCanonical(normalizedPhone);
 
             long deleted = contactRepository.deleteByOwnerUserIdAndTargetGlobalPhoneHash(ownerUserId, targetGlobalPhoneHash);
             if (deleted > 0) {
-                log.info("Contact deleted: owner={}, target={}", ownerUserId, getOpaqueHashSuffix(targetGlobalPhoneHash));
+				log.info("Contact relationship deleted");
                 privacyEvaluationService.invalidateContactCache(ownerUserId, targetGlobalPhoneHash);
                 return true;
             }
             return false;
         } catch (Exception e) {
-            log.error("Failed to delete contact", e);
+			log.error("Failed to delete contact category={}", e.getClass().getSimpleName());
             return false;
         }
     }

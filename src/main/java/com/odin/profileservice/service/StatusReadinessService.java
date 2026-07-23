@@ -19,6 +19,7 @@ public class StatusReadinessService {
     private final PrivacySettingsRepository privacy;
     private final SyncAuditRepository syncAudits;
     private final PhoneNumberHasher hasher;
+    private final ContactTokenService contactTokenService;
     private final AccountStateValidator accountStateValidator;
 
     public StatusReadinessResponse assess(String userId) {
@@ -75,6 +76,8 @@ public class StatusReadinessService {
         String normalized = profile.getMobile() == null ? "" : profile.getMobile().replaceAll("[^0-9]", "");
         if (normalized.isEmpty()) throw new IllegalStateException("Authoritative identity unavailable");
         String global = hasher.hashWithGlobalPepper(normalized);
+        ContactTokenService.LookupTokenMaterial tokenMaterial =
+            contactTokenService.deriveLookupTokensFromCanonical(normalized);
         Optional<User> byId = users.findById(userId);
         if (byId.isPresent()) {
             if (!global.equals(byId.get().getGlobalPhoneHash())) throw new IllegalStateException("Identity conflict");
@@ -85,7 +88,12 @@ public class StatusReadinessService {
         String salt = hasher.generateSalt();
         try {
             users.save(User.builder().userId(userId).phoneSalt(salt)
-                    .phoneHash(hasher.hashPhoneNumber(normalized, salt)).globalPhoneHash(global)
+                    .phoneHash(hasher.hashPhoneNumber(normalized, salt))
+                    .phoneToken(tokenMaterial.getCurrentToken())
+                    .phoneTokenVersion(tokenMaterial.getCurrentVersion())
+                    .globalPhoneHash(global)
+                    .globalPhoneToken(tokenMaterial.getCurrentToken())
+                    .globalPhoneTokenVersion(tokenMaterial.getCurrentVersion())
                     .pepperVersion(hasher.getCurrentPepperVersion()).displayName(profile.getFirstName()).build());
         } catch (DataIntegrityViolationException concurrent) {
             User winner = users.findById(userId).orElseThrow(() -> concurrent);

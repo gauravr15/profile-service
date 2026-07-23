@@ -24,7 +24,18 @@ public interface ContactRepository extends JpaRepository<Contact, String> {
      * @param targetGlobalPhoneHash the deterministic global hash being checked
      * @return true if contact is saved
      */
-    boolean existsByOwnerUserIdAndTargetGlobalPhoneHash(String ownerUserId, String targetGlobalPhoneHash);
+    @Query(value = "SELECT CASE WHEN COUNT(*) > 0 THEN TRUE ELSE FALSE END FROM ("
+            + "SELECT owner_user_id, target_global_phone_hash, target_global_phone_token, target_global_phone_token_version FROM contacts "
+            + "WHERE owner_user_id = :ownerUserId AND target_global_phone_hash = :targetHash "
+            + "AND NOT EXISTS (SELECT 1 FROM contact_sync_state_v2 s WHERE s.owner_user_id = :ownerUserId) "
+            + "UNION ALL "
+            + "SELECT owner_user_id, target_global_phone_hash, target_global_phone_token, target_global_phone_token_version FROM contacts_v2 "
+            + "WHERE owner_user_id = :ownerUserId AND target_global_phone_hash = :targetHash "
+            + "AND EXISTS (SELECT 1 FROM contact_sync_state_v2 s WHERE s.owner_user_id = :ownerUserId)"
+            + ") effective_contacts", nativeQuery = true)
+    boolean existsByOwnerUserIdAndTargetGlobalPhoneHash(
+            @Param("ownerUserId") String ownerUserId,
+            @Param("targetHash") String targetGlobalPhoneHash);
 
     /**
      * Get all contacts saved by a user.
@@ -32,12 +43,25 @@ public interface ContactRepository extends JpaRepository<Contact, String> {
      * @param ownerUserId the user who saved the contacts
      * @return list of saved contacts
      */
-    List<Contact> findByOwnerUserId(String ownerUserId);
+    @Query(value = "SELECT c.contact_id, c.owner_user_id, c.target_global_phone_hash, "
+            + "c.target_global_phone_token, c.target_global_phone_token_version, c.saved_at, c.updated_at FROM contacts c WHERE c.owner_user_id = :ownerUserId "
+            + "AND NOT EXISTS (SELECT 1 FROM contact_sync_state_v2 s WHERE s.owner_user_id = :ownerUserId) "
+            + "UNION ALL SELECT v.contact_id, v.owner_user_id, v.target_global_phone_hash, "
+            + "v.target_global_phone_token, v.target_global_phone_token_version, v.saved_at, v.updated_at FROM contacts_v2 v WHERE v.owner_user_id = :ownerUserId "
+            + "AND EXISTS (SELECT 1 FROM contact_sync_state_v2 s WHERE s.owner_user_id = :ownerUserId)",
+            nativeQuery = true)
+    List<Contact> findByOwnerUserId(@Param("ownerUserId") String ownerUserId);
 
     /**
      * Count contacts saved by a user.
      */
-    long countByOwnerUserId(String ownerUserId);
+    @Query(value = "SELECT COUNT(*) FROM ("
+            + "SELECT contact_id FROM contacts WHERE owner_user_id = :ownerUserId "
+            + "AND NOT EXISTS (SELECT 1 FROM contact_sync_state_v2 s WHERE s.owner_user_id = :ownerUserId) "
+            + "UNION ALL SELECT contact_id FROM contacts_v2 WHERE owner_user_id = :ownerUserId "
+            + "AND EXISTS (SELECT 1 FROM contact_sync_state_v2 s WHERE s.owner_user_id = :ownerUserId)"
+            + ") effective_contacts", nativeQuery = true)
+    long countByOwnerUserId(@Param("ownerUserId") String ownerUserId);
 
     /**
      * Find all contacts that saved a given global phone hash.
@@ -46,13 +70,34 @@ public interface ContactRepository extends JpaRepository<Contact, String> {
      * @param targetGlobalPhoneHash the deterministic global hash to find savers for
      * @return list of contacts with this as target
      */
-    List<Contact> findByTargetGlobalPhoneHash(String targetGlobalPhoneHash);
+    @Query(value = "SELECT c.contact_id, c.owner_user_id, c.target_global_phone_hash, "
+            + "c.saved_at, c.updated_at FROM contacts c WHERE c.target_global_phone_hash = :targetHash "
+            + "AND NOT EXISTS (SELECT 1 FROM contact_sync_state_v2 s WHERE s.owner_user_id = c.owner_user_id) "
+            + "UNION ALL SELECT v.contact_id, v.owner_user_id, v.target_global_phone_hash, "
+            + "v.saved_at, v.updated_at FROM contacts_v2 v WHERE v.target_global_phone_hash = :targetHash "
+            + "AND EXISTS (SELECT 1 FROM contact_sync_state_v2 s WHERE s.owner_user_id = v.owner_user_id)",
+            nativeQuery = true)
+    List<Contact> findByTargetGlobalPhoneHash(@Param("targetHash") String targetGlobalPhoneHash);
 
     /**
      * Delete a specific contact relationship.
      */
     long deleteByOwnerUserIdAndTargetGlobalPhoneHash(String ownerUserId, String targetGlobalPhoneHash);
 
+    long deleteAllByOwnerUserId(String ownerUserId);
+
+    long deleteAllByTargetGlobalPhoneHash(String targetGlobalPhoneHash);
+
+    @Query(value = "SELECT c.contact_id, c.owner_user_id, c.target_global_phone_hash, "
+            + "c.target_global_phone_token, c.target_global_phone_token_version, c.saved_at, c.updated_at FROM contacts c WHERE c.owner_user_id IN (:ownerUserIds) "
+            + "AND c.target_global_phone_hash = :targetHash "
+            + "AND NOT EXISTS (SELECT 1 FROM contact_sync_state_v2 s WHERE s.owner_user_id = c.owner_user_id) "
+            + "UNION ALL SELECT v.contact_id, v.owner_user_id, v.target_global_phone_hash, "
+            + "v.target_global_phone_token, v.target_global_phone_token_version, v.saved_at, v.updated_at FROM contacts_v2 v WHERE v.owner_user_id IN (:ownerUserIds) "
+            + "AND v.target_global_phone_hash = :targetHash "
+            + "AND EXISTS (SELECT 1 FROM contact_sync_state_v2 s WHERE s.owner_user_id = v.owner_user_id)",
+            nativeQuery = true)
     List<Contact> findByOwnerUserIdInAndTargetGlobalPhoneHash(
-            Collection<String> ownerUserIds, String targetGlobalPhoneHash);
+            @Param("ownerUserIds") Collection<String> ownerUserIds,
+            @Param("targetHash") String targetGlobalPhoneHash);
 }

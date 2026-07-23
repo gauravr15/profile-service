@@ -23,11 +23,16 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class GroupService {
+
+    private static final Pattern CANONICAL_GROUP_ID = Pattern.compile(
+            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
+    private static final Pattern CUSTOMER_ID = Pattern.compile("^[A-Za-z0-9_-]{1,64}$");
 
     private final GroupRepository groupRepository;
     private final GroupEventProducer groupEventProducer;
@@ -126,7 +131,7 @@ public class GroupService {
 
     public boolean isMember(String groupId, String memberId) {
         validateGroupId(groupId);
-        validateCreator(memberId);
+        validateMembershipCustomerId(memberId);
         return groupRepository.existsByGroupIdAndMemberId(groupId, memberId);
     }
 
@@ -145,9 +150,17 @@ public class GroupService {
         }
     }
 
+    private void validateMembershipCustomerId(String customerId) {
+        if (!StringUtils.hasText(customerId)
+                || !CUSTOMER_ID.matcher(customerId.trim()).matches()) {
+            throw new IllegalArgumentException("customerId is invalid");
+        }
+    }
+
     private void validateGroupId(String groupId) {
-        if (!StringUtils.hasText(groupId)) {
-            throw new IllegalArgumentException("groupId is required");
+        if (!StringUtils.hasText(groupId)
+                || !CANONICAL_GROUP_ID.matcher(groupId).matches()) {
+            throw new IllegalArgumentException("groupId is invalid");
         }
     }
 

@@ -8,15 +8,19 @@ import com.odin.profileservice.entity.*;
 import com.odin.profileservice.enums.*;
 import com.odin.profileservice.repo.*;
 import com.odin.profileservice.utility.*;
+import static org.mockito.Mockito.mock;
 
 class StatusReadinessServiceTest {
     ProfileRepository profiles=mock(ProfileRepository.class); UserRepository users=mock(UserRepository.class);
     PrivacySettingsRepository privacy=mock(PrivacySettingsRepository.class); SyncAuditRepository audits=mock(SyncAuditRepository.class);
-    PhoneNumberHasher hasher=mock(PhoneNumberHasher.class); StatusReadinessService service;
-    @BeforeEach void setUp(){ service=new StatusReadinessService(profiles,users,privacy,audits,hasher,new AccountStateValidator());
+    PhoneNumberHasher hasher=mock(PhoneNumberHasher.class); ContactTokenService tokens=mock(ContactTokenService.class); StatusReadinessService service;
+    private ContactTokenService.LookupTokenMaterial tokenMaterial;
+    @BeforeEach void setUp(){ service=new StatusReadinessService(profiles,users,privacy,audits,hasher,tokens,new AccountStateValidator());
         when(profiles.findByCustomerId(1)).thenReturn(Profile.builder().customerId(1).mobile("919999999999").isActive(true).isDeleted(false).firstName("A").build());
         when(hasher.getCurrentPepperVersion()).thenReturn(1); when(hasher.hashWithGlobalPepper(anyString())).thenReturn("g".repeat(44));
-        when(hasher.generateSalt()).thenReturn("salt"); when(hasher.hashPhoneNumber(anyString(),anyString())).thenReturn("p".repeat(64)); }
+        when(hasher.generateSalt()).thenReturn("salt"); when(hasher.hashPhoneNumber(anyString(),anyString())).thenReturn("p".repeat(64));
+        tokenMaterial = new ContactTokenService.LookupTokenMaterial("919999999999", "legacy-token", "token", 1);
+        when(tokens.deriveLookupTokensFromCanonical(anyString())).thenReturn(tokenMaterial); }
     @Test void distinguishesNeverSyncedFromSuccessfullySyncedEmpty(){ readyIdentity(); when(privacy.existsByUserId("1")).thenReturn(true);
         assertEquals(StatusReadinessState.REPAIR_REQUIRED,service.assess("1").getState());
         when(audits.existsById("1")).thenReturn(true); assertEquals(StatusReadinessState.READY,service.assess("1").getState()); }

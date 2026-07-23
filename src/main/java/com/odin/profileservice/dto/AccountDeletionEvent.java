@@ -19,6 +19,8 @@ import java.util.List;
 @AllArgsConstructor
 public class AccountDeletionEvent {
 
+    private String eventId;
+
     private String customerId;
 
     private String globalPhoneHash;

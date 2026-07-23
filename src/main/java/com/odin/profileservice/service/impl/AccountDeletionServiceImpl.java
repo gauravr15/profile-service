@@ -24,10 +24,10 @@ import com.odin.profileservice.repo.GroupRepository;
 import com.odin.profileservice.repo.PrivacySettingsRepository;
 import com.odin.profileservice.repo.ProfileRepository;
 import com.odin.profileservice.repo.RefreshTokenRepository;
-import com.odin.profileservice.repo.SyncAuditRepository;
 import com.odin.profileservice.repo.UserRepository;
 import com.odin.profileservice.service.AccountDeletionService;
-import com.odin.profileservice.utility.AccountDeletionProducer;
+import com.odin.profileservice.service.AccountDeletionOutboxService;
+import com.odin.profileservice.service.ContactLifecycleService;
 import com.odin.profileservice.utility.ResponseObject;
 
 import lombok.extern.slf4j.Slf4j;
@@ -58,13 +58,13 @@ public class AccountDeletionServiceImpl implements AccountDeletionService {
     private ContactExceptionRepository contactExceptionRepository;
 
     @Autowired
-    private SyncAuditRepository syncAuditRepository;
-
-    @Autowired
     private GroupRepository groupRepository;
 
     @Autowired
-    private AccountDeletionProducer accountDeletionProducer;
+    private AccountDeletionOutboxService accountDeletionOutboxService;
+
+    @Autowired
+    private ContactLifecycleService contactLifecycleService;
 
     @Autowired
     private ResponseObject response;
@@ -123,6 +123,10 @@ public class AccountDeletionServiceImpl implements AccountDeletionService {
                     contactOwnerIds.size(), customerId);
         }
 
+        // Contact cleanup must complete while the target hash and account identity
+        // are still available. Same-database failures roll back account deletion.
+        contactLifecycleService.deleteAccountContacts(customerId, globalPhoneHash);
+
         // --- Step 3: Mark profile and auth as deleted in core service (via REST) ---
         profile.setIsDeleted(true);
         profile.setIsActive(false);
@@ -142,14 +146,7 @@ public class AccountDeletionServiceImpl implements AccountDeletionService {
                     log.info("[DELETE-ACCOUNT] privacy_settings deleted for userId={}", customerId);
                 });
 
-        // 4b. Contacts owned by this user (all contacts this user had saved)
-        List<com.odin.profileservice.entity.Contact> ownedContacts = contactRepository.findByOwnerUserId(customerId);
-        if (!ownedContacts.isEmpty()) {
-            contactRepository.deleteAll(ownedContacts);
-            log.info("[DELETE-ACCOUNT] {} contact(s) deleted for ownerUserId={}", ownedContacts.size(), customerId);
-        }
-
-        // 4c. Blocked contacts created by this user
+        // 4b. Blocked contacts created by this user
         List<com.odin.profileservice.entity.BlockedContact> blockedContacts =
                 blockedContactRepository.findByBlockerUserId(customerId);
         if (!blockedContacts.isEmpty()) {
@@ -157,7 +154,7 @@ public class AccountDeletionServiceImpl implements AccountDeletionService {
             log.info("[DELETE-ACCOUNT] {} blocked_contact(s) deleted for blockerUserId={}", blockedContacts.size(), customerId);
         }
 
-        // 4d. Contact exceptions owned by this user
+        // 4c. Contact exceptions owned by this user
         List<com.odin.profileservice.entity.ContactException> contactExceptions =
                 contactExceptionRepository.findByOwnerUserId(customerId);
         if (!contactExceptions.isEmpty()) {
@@ -165,14 +162,7 @@ public class AccountDeletionServiceImpl implements AccountDeletionService {
             log.info("[DELETE-ACCOUNT] {} contact_exception(s) deleted for ownerUserId={}", contactExceptions.size(), customerId);
         }
 
-        // 4e. Sync audit entry
-        syncAuditRepository.findById(customerId)
-                .ifPresent(sa -> {
-                    syncAuditRepository.delete(sa);
-                    log.info("[DELETE-ACCOUNT] mw_sync_audit deleted for userId={}", customerId);
-                });
-
-        // 4f. mw_users row — clears profile photo URL, display name, all hashes
+        // 4d. mw_users row — clears profile photo URL, display name, all hashes
         //     (profile photo will appear fresh on re-registration)
         middlewareUserOpt.ifPresent(user -> {
             userRepository.delete(user);
@@ -194,15 +184,17 @@ public class AccountDeletionServiceImpl implements AccountDeletionService {
             log.info("[DELETE-ACCOUNT] Removed customerId={} from {} group(s)", customerId, memberGroups.size());
         }
 
-        // --- Step 7: Publish Kafka event for downstream contact-sync cleanup ---
+        // --- Step 7: Persist the downstream deletion handoff in this transaction ---
         AccountDeletionEvent event = AccountDeletionEvent.builder()
                 .customerId(customerId)
                 .globalPhoneHash(globalPhoneHash)
                 .timestamp(System.currentTimeMillis())
                 .contactOwnerIds(contactOwnerIds)
                 .build();
-        accountDeletionProducer.publish(event);
-        log.info("[DELETE-ACCOUNT] Account deletion completed successfully for customerId={}", customerId);
+        String deletionEventId = accountDeletionOutboxService.enqueue(event);
+        contactLifecycleService.clearTemporaryDiscoveryState(customerId);
+        log.info("[DELETE-ACCOUNT] Account deletion committed to durable handoff eventId={}",
+                deletionEventId);
 
         return response.buildResponse(LanguageConstants.EN, ResponseCodes.SUCCESS_CODE);
     }

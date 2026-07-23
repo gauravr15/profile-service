@@ -5,12 +5,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -20,8 +16,6 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.ObjectUtils;
 
-import com.google.i18n.phonenumbers.PhoneNumberUtil;
-import com.google.i18n.phonenumbers.Phonenumber.PhoneNumber;
 import com.odin.profileservice.constants.ApplicationConstants;
 import com.odin.profileservice.constants.LanguageConstants;
 import com.odin.profileservice.constants.ResponseCodes;
@@ -41,7 +35,7 @@ import com.odin.profileservice.enums.OTPType;
 import com.odin.profileservice.repo.ProfileRepository;
 import com.odin.profileservice.repo.RefreshTokenRepository;
 import com.odin.profileservice.service.LoginService;
-import com.odin.profileservice.service.SyncAuditService;
+import com.odin.profileservice.service.ContactDiscoveryService;
 import com.odin.profileservice.utility.JwtTokenUtil;
 import com.odin.profileservice.utility.OtpService;
 import com.odin.profileservice.utility.ResponseObject;
@@ -70,22 +64,19 @@ public class LoginServiceImpl implements LoginService {
 	private OtpService otpService;
 
 	@Autowired
-	private SyncAuditService sync;
-
-	@Autowired
 	private RefreshTokenRepository refreshTokenRepo;
 
 	@Autowired
 	private AccountStateValidator accountStateValidator;
+
+	@Autowired
+	private ContactDiscoveryService contactDiscoveryService;
 
 	@Value("${max.incorrect.password.count}")
 	private String maxIncorrectPasswordCount;
 
 	@Value("${jwt.secret}")
 	private String jwtSecret;
-
-	@Value("${update.sync.time}")
-	private Boolean updateSyncTime;
 
 	@Value("${jwt.expiration}")
 	private long accessTokenExpiryMs;
@@ -286,117 +277,7 @@ public class LoginServiceImpl implements LoginService {
 	@Override
 	public ResponseDTO fetchCustomerByMobile(HttpServletRequest request, CustomerType customerType,
 			MobileListDTO mobiles) {
-		log.info("Fetching fetchCustomerByMobile");
-		String customerId = request.getHeader("customerId");
-		log.debug("fetching bulk customer details for customerId : {}", customerId);
-
-		PhoneNumberUtil phoneNumberUtil = PhoneNumberUtil.getInstance();
-		Set<String> normalizedMobiles = new HashSet<>();
-		Map<String, String> mobileMap = new HashMap<>();
-
-		// Extract region from provided country code
-		String countryCode = mobiles.getCountryCode() != null ? mobiles.getCountryCode().replaceAll("[^0-9]", "")
-				: null;
-
-		String region = null;
-		if (countryCode != null) {
-			try {
-				int code = Integer.parseInt(countryCode);
-				List<String> regions = phoneNumberUtil.getRegionCodesForCountryCode(code);
-				if (!regions.isEmpty()) {
-					region = regions.get(0);
-				}
-			} catch (Exception ex) {
-				log.warn("Invalid country code: {}", countryCode);
-			}
-		}
-
-		// Normalize incoming numbers (FULLY FIXED)
-		for (String rawMobile : mobiles.getMobile()) {
-			if (rawMobile == null)
-				continue;
-
-			String cleaned = rawMobile.replaceAll("[^0-9+]", "");
-
-			String normalized = null;
-
-			try {
-				PhoneNumber phoneNumber = null;
-
-				// CASE 1: starts with + → parse directly
-				if (cleaned.startsWith("+")) {
-					phoneNumber = phoneNumberUtil.parse(cleaned, null);
-				} else {
-					// CASE 2: Try using logged-in user's region
-					try {
-						phoneNumber = phoneNumberUtil.parse(cleaned, region);
-
-						// If invalid, fallback to international
-						if (!phoneNumberUtil.isValidNumber(phoneNumber)) {
-							phoneNumber = phoneNumberUtil.parse("+" + cleaned, null);
-						}
-					} catch (Exception e) {
-						// Fallback for numbers like 66629..., 9199..., etc.
-						phoneNumber = phoneNumberUtil.parse("+" + cleaned, null);
-					}
-				}
-
-				// Final validation
-				if (phoneNumberUtil.isValidNumber(phoneNumber)) {
-					normalized = phoneNumberUtil.format(phoneNumber, PhoneNumberUtil.PhoneNumberFormat.E164);
-
-					if (normalized.startsWith("+")) {
-						normalized = normalized.substring(1);
-					}
-				}
-
-			} catch (Exception e) {
-				log.warn("Parse failed for {}: {}", rawMobile, e.getMessage());
-			}
-
-			// Only add if valid
-			if (normalized != null) {
-				normalizedMobiles.add(normalized);
-				mobileMap.put(normalized, rawMobile);
-			} else {
-				log.warn("Invalid mobile skipped: {}", rawMobile);
-			}
-		}
-
-		if (normalizedMobiles.isEmpty()) {
-			return response.buildResponse(LanguageConstants.EN, ResponseCodes.FAILURE_CODE);
-		}
-
-		// DB lookup
-		List<Profile> profiles = profileRepo.findLikeMobileNumber(new ArrayList<>(normalizedMobiles), true);
-
-		Map<String, CustomerDetailsDTO> result = new HashMap<>();
-
-		for (Profile profile : profiles) {
-			String normalizedProfileMobile = profile.getMobile().replaceAll("[^0-9]", "");
-
-			String reqMobile = mobileMap.getOrDefault(normalizedProfileMobile, normalizedProfileMobile);
-
-			CustomerDetailsDTO dto = CustomerDetailsDTO.builder().customerId(profile.getCustomerId())
-					.firstName(profile.getFirstName()).lastName(profile.getLastName()).mobile(profile.getMobile())
-					.build();
-
-			result.put(reqMobile, dto);
-		}
-
-		if (result.isEmpty()) {
-			return response.buildResponse(LanguageConstants.EN, ResponseCodes.FAILURE_CODE);
-		}
-		log.info("updating sync time");
-		if (updateSyncTime) {
-			log.info("performing contact sync");
-			updateSyncDetails(customerId);
-		}
-		return response.buildResponse(LanguageConstants.EN, ResponseCodes.SUCCESS_CODE, result);
-	}
-
-	void updateSyncDetails(String customerId) {
-		sync.updateLastSyncedTime(customerId);
+		return contactDiscoveryService.discover(request.getHeader("customerId"), mobiles);
 	}
 
 	@Override

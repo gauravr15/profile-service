@@ -37,6 +37,12 @@ public class BlockedContact {
     @Column(name = "blocked_global_phone_hash", nullable = false, length = 64)
     private String blockedGlobalPhoneHash;
 
+    @Column(name = "blocked_global_phone_token", length = 64)
+    private String blockedGlobalPhoneToken;
+
+    @Column(name = "blocked_global_phone_token_version")
+    private Integer blockedGlobalPhoneTokenVersion;
+
     @Column(name = "blocked_at", nullable = false, updatable = false)
     private Timestamp blockedAt;
 

@@ -9,6 +9,7 @@ import com.odin.profileservice.entity.User;
 import com.odin.profileservice.repo.ProfileRepository;
 import com.odin.profileservice.repo.UserRepository;
 import com.odin.profileservice.service.ContactService;
+import com.odin.profileservice.service.ContactTokenService;
 import com.odin.profileservice.service.PrivacySettingsService;
 import com.odin.profileservice.service.SyncAuditService;
 import com.odin.profileservice.utility.PhoneNumberHasher;
@@ -54,6 +55,7 @@ public class ContactSyncController {
     private final UserRepository userRepository;
     private final PrivacySettingsService privacySettingsService;
     private final PhoneNumberHasher phoneNumberHasher;
+    private final ContactTokenService contactTokenService;
     private final ResponseObject responseObject;
 
     /**
@@ -105,13 +107,15 @@ public class ContactSyncController {
                 // Find or create corresponding user in middleware
                 String normalizedUserPhone = normalizePhoneSimple(userProfile.getMobile());
                 String globalPhoneHash = phoneNumberHasher.hashWithGlobalPepper(normalizedUserPhone);
+                ContactTokenService.LookupTokenMaterial tokenMaterial =
+                    contactTokenService.deriveLookupTokensFromCanonical(normalizedUserPhone);
                 
                 // First, try to find user by userId (customerId) - this is the primary key
                 java.util.Optional<User> middlewareUserByUserId = userRepository.findById(customerId);
                 
                 if (middlewareUserByUserId.isPresent()) {
                     middlewareUserId = middlewareUserByUserId.get().getUserId();
-                    log.info("Found existing middleware user by userId: {}", middlewareUserId);
+					log.info("Found existing middleware identity for contact sync");
                 } else {
                     // User doesn't exist by userId, check if it exists by globalPhoneHash
                     java.util.Optional<User> middlewareUserByHash = userRepository.findByGlobalPhoneHash(globalPhoneHash);
@@ -119,27 +123,30 @@ public class ContactSyncController {
                     if (middlewareUserByHash.isPresent()) {
                         // User exists by hash but with different userId (shouldn't happen in normal flow)
                         middlewareUserId = middlewareUserByHash.get().getUserId();
-                        log.warn("Found user by globalPhoneHash but different userId. Existing: {}, Expected: {}", middlewareUserId, customerId);
+						log.warn("Contact sync found an inconsistent middleware identity mapping");
                     } else {
                         // Create user in middleware if doesn't exist
                         String phoneSalt = phoneNumberHasher.generateSalt();
                         String phoneHash = phoneNumberHasher.hashPhoneNumber(normalizedUserPhone, phoneSalt);
                         
-                        log.info("Building new user with userId: {}", customerId);
+						log.info("Building middleware identity for contact sync");
                         User newUser = User.builder()
                             .userId(customerId)
                             .phoneHash(phoneHash)
+                            .phoneToken(tokenMaterial.getCurrentToken())
+                            .phoneTokenVersion(tokenMaterial.getCurrentVersion())
                             .phoneSalt(phoneSalt)
                             .globalPhoneHash(globalPhoneHash)
+                            .globalPhoneToken(tokenMaterial.getCurrentToken())
+                            .globalPhoneTokenVersion(tokenMaterial.getCurrentVersion())
                             .pepperVersion(1)
                             .displayName((userProfile.getFirstName() != null ? userProfile.getFirstName() : "") + 
                                        " " + (userProfile.getLastName() != null ? userProfile.getLastName() : ""))
                             .build();
                         
                         userRepository.save(newUser);
-                        log.info("User object after save - userId: {}", newUser.getUserId());
-                        middlewareUserId = newUser.getUserId();
-                        log.info("Created middleware user for customerId: {} with userId: {}", customerId, middlewareUserId);
+						middlewareUserId = newUser.getUserId();
+						log.info("Created middleware identity for contact sync");
                     }
                 }
                 
@@ -159,14 +166,15 @@ public class ContactSyncController {
                 return ResponseEntity.ok(response);
             }
             
-            log.info("User synced successfully with middlewareUserId: {}", middlewareUserId);
+		log.info("Contact sync owner identity resolved");
 
             // Ensure default privacy settings exist (EVERYONE for first-time users)
 			boolean criticalSyncFailure = false;
             try {
                 privacySettingsService.getOrCreateSettings(middlewareUserId);
             } catch (Exception ex) {
-                log.warn("Failed to ensure privacy settings for user {}: {}", middlewareUserId, ex.getMessage());
+				log.warn("Failed to ensure contact-sync privacy settings category={}",
+						ex.getClass().getSimpleName());
 				criticalSyncFailure = true;
             }
 
@@ -294,22 +302,29 @@ public class ContactSyncController {
                                         String contactPhoneSalt = phoneNumberHasher.generateSalt();
                                         String contactPhoneHash = phoneNumberHasher.hashPhoneNumber(normalizedPhone, contactPhoneSalt);
                                         String contactGlobalPhoneHash = phoneNumberHasher.hashWithGlobalPepper(normalizedPhone);
+                                        ContactTokenService.LookupTokenMaterial contactTokenMaterial =
+                                                contactTokenService.deriveLookupTokensFromCanonical(normalizedPhone);
                                         
                                         User contactUser = User.builder()
                                             .userId(contactCustomerId)
                                             .phoneHash(contactPhoneHash)
+                                            .phoneToken(contactTokenMaterial.getCurrentToken())
+                                            .phoneTokenVersion(contactTokenMaterial.getCurrentVersion())
                                             .phoneSalt(contactPhoneSalt)
                                             .globalPhoneHash(contactGlobalPhoneHash)
+                                            .globalPhoneToken(contactTokenMaterial.getCurrentToken())
+                                            .globalPhoneTokenVersion(contactTokenMaterial.getCurrentVersion())
                                             .pepperVersion(1)
                                             .displayName((contactProfile.getFirstName() != null ? contactProfile.getFirstName() : "") +
                                                        " " + (contactProfile.getLastName() != null ? contactProfile.getLastName() : ""))
                                             .build();
                                         
                                         userRepository.save(contactUser);
-                                        log.info("Created middleware user for contact: customerId={}, userId={}", contactCustomerId, contactCustomerId);
+										log.info("Created middleware identity for registered contact");
                                     }
                                 } catch (Exception e) {
-                                    log.warn("Failed to sync contact user to middleware: {}", e.getMessage());
+									log.warn("Failed to sync registered contact identity category={}",
+											e.getClass().getSimpleName());
 									criticalSyncFailure = true;
                                 }
                             }
@@ -328,13 +343,13 @@ public class ContactSyncController {
                     }
                 } catch (Exception e) {
                     // Log error but continue with other contacts (never log raw phone)
-                    log.debug("Failed to sync contact", e);
+					log.debug("Failed to sync contact category={}", e.getClass().getSimpleName());
 					criticalSyncFailure = true;
                 }
             }
 
 			if (criticalSyncFailure) {
-				log.warn("Contact sync incomplete. customerId={}, state=SYNC_FAILED", customerId);
+				log.warn("Contact sync incomplete state=SYNC_FAILED");
 				return ResponseEntity.ok(responseObject.buildResponse(ResponseCodes.INTERNAL_SERVER_ERROR));
 			}
 
@@ -355,7 +370,7 @@ public class ContactSyncController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            log.error("Contact sync failed", e);
+			log.error("Contact sync failed category={}", e.getClass().getSimpleName());
             ResponseDTO response = responseObject.buildResponse(ResponseCodes.INTERNAL_SERVER_ERROR);
             return ResponseEntity.ok(response);
         }
@@ -426,8 +441,8 @@ public class ContactSyncController {
                 return normalized;
             }
 
-        } catch (Exception e) {
-            log.debug("Failed to normalize phone number: {}", rawPhone);
+		} catch (Exception e) {
+			log.debug("Contact phone normalization failed");
         }
 
         return null;
