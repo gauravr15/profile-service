@@ -1,5 +1,7 @@
 package com.odin.profileservice.config;
 import org.slf4j.MDC;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
@@ -9,6 +11,8 @@ import java.util.UUID;
 
 @Component
 public class CorrelationIdInterceptor implements HandlerInterceptor {
+
+    private static final Logger log = LoggerFactory.getLogger(CorrelationIdInterceptor.class);
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
@@ -23,6 +27,15 @@ public class CorrelationIdInterceptor implements HandlerInterceptor {
 
         // Add the correlationId to the response headers
         response.setHeader("X-Correlation-ID", correlationId);
+
+        if (com.odin.profileservice.utility.BulkCustomerDetailsDiagnostics.isTargetRequest(request)) {
+            log.info(
+                    "[BULK-CUSTOMER-DETAILS][REACHABILITY] stage=before-controller traceId={} method={} path={} httpStatus=NA requestBytes={}",
+                    correlationId,
+                    request.getMethod(),
+                    request.getRequestURI(),
+                    com.odin.profileservice.utility.BulkCustomerDetailsDiagnostics.requestByteLength(request));
+        }
 
         return true; // Continue with the next interceptor or the actual handler
     }
