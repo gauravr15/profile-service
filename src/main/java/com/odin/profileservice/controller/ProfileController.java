@@ -2,8 +2,6 @@ package com.odin.profileservice.controller;
 
 import javax.servlet.http.HttpServletRequest;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -31,8 +29,6 @@ import com.odin.profileservice.utility.ResponseObject;
 @RequestMapping(value = ApplicationConstants.API_VERSION)
 public class ProfileController {
 
-	private static final Logger log = LoggerFactory.getLogger(ProfileController.class);
-
 	@Autowired
 	ResponseObject response;
 
@@ -59,41 +55,10 @@ public class ProfileController {
 	@PostMapping(ApplicationConstants.BULK + ApplicationConstants.CUSTOMER + ApplicationConstants.DETAILS)
 	public ResponseEntity<Object> fetchCustomerByMobile(HttpServletRequest servlet,
 			@RequestBody MobileListDTO mobiles) {
-		log.info(
-				"[BULK-CUSTOMER-DETAILS][REACHABILITY] stage=controller-entry traceId={} method={} path={} httpStatus=NA requestBytes={}",
-				com.odin.profileservice.utility.BulkCustomerDetailsDiagnostics.traceId(servlet),
-				servlet.getMethod(),
-				servlet.getRequestURI(),
-				com.odin.profileservice.utility.BulkCustomerDetailsDiagnostics.requestByteLength(servlet));
-		log.info(
-				"[BULK-CUSTOMER-DETAILS][REACHABILITY] stage=before-service-call traceId={} method={} path={} httpStatus=NA requestBytes={}",
-				com.odin.profileservice.utility.BulkCustomerDetailsDiagnostics.traceId(servlet),
-				servlet.getMethod(),
-				servlet.getRequestURI(),
-				com.odin.profileservice.utility.BulkCustomerDetailsDiagnostics.requestByteLength(servlet));
 		try {
 			CustomerType customerType = CustomerType.CUSTOMER;
-			ResponseDTO result;
-			try {
-				result = factory.getInstance(customerType)
-						.fetchCustomerByMobile(servlet, customerType, mobiles);
-			} catch (Exception ex) {
-				log.error(
-						"[BULK-CUSTOMER-DETAILS][REACHABILITY] stage=service-call-exception traceId={} method={} path={} exceptionClass={} safeErrorCategory={}",
-						com.odin.profileservice.utility.BulkCustomerDetailsDiagnostics.traceId(servlet),
-						servlet.getMethod(),
-						servlet.getRequestURI(),
-						ex.getClass().getName(),
-						com.odin.profileservice.utility.BulkCustomerDetailsDiagnostics.safeCategory(ex.getClass().getName()),
-						ex);
-				throw ex;
-			}
-			log.info(
-					"[BULK-CUSTOMER-DETAILS][REACHABILITY] stage=after-service-return traceId={} method={} path={} httpStatus=200 requestBytes={}",
-					com.odin.profileservice.utility.BulkCustomerDetailsDiagnostics.traceId(servlet),
-					servlet.getMethod(),
-					servlet.getRequestURI(),
-					com.odin.profileservice.utility.BulkCustomerDetailsDiagnostics.requestByteLength(servlet));
+			ResponseDTO result = factory.getInstance(customerType)
+					.fetchCustomerByMobile(servlet, customerType, mobiles);
 			return new ResponseEntity<>(result, HttpStatus.OK);
 		} catch (ContactDiscoveryException ex) {
 			ResponseDTO result = ResponseDTO.builder()

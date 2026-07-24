@@ -112,19 +112,24 @@ class ContactDiscoveryServiceTest {
 
     @Test
     void wildcardAndMalformedInputAreRejectedBeforeLookup() {
-        assertInvalid(request("9199%000092"));
-        assertInvalid(request("9199_000092"));
-        assertInvalid(request("*919900000092"));
-        verifyNoInteractions(profiles);
+        when(profiles.findLikeMobileNumber(anyList(), eq(true)))
+                .thenReturn(List.of(activeProfile(92, "919900000092")));
+
+        ResponseDTO result = service.discover("70", request(
+                "919900000092", "9199%000092", "*919900000092"));
+
+        assertEquals(ResponseCodes.SUCCESS_CODE, result.getStatusCode());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<String>> numbers = ArgumentCaptor.forClass(List.class);
+        verify(profiles).findLikeMobileNumber(numbers.capture(), eq(true));
+        assertEquals(List.of("919900000092"), numbers.getValue());
+        verify(limiter).enforce(eq("70"), eq(List.of("919900000092")));
     }
 
     @Test
-    void nullBlankOversizedAndInvalidCountryInputsAreRejected() {
+        void nullMissingListOversizedBatchAndInvalidCountryInputsAreRejected() {
         assertInvalid(null);
         assertInvalid(MobileListDTO.builder().countryCode("+91").build());
-        assertInvalid(request((String) null));
-        assertInvalid(request(" "));
-        assertInvalid(request("1".repeat(33)));
         assertInvalid(MobileListDTO.builder()
                 .mobile(List.of("919900000092")).countryCode("India").build());
 
@@ -137,6 +142,16 @@ class ContactDiscoveryServiceTest {
         assertThrows(ContactDiscoveryException.class,
                 () -> bounded.discover("70", request("919900000092", "919900000093")));
     }
+
+        @Test
+        void allInvalidEntriesReturnFailureAndNeverReachRepository() {
+                ResponseDTO result = service.discover("70", request(
+                                (String) null, " ", "1".repeat(33), "*919900000092"));
+
+                assertEquals(ResponseCodes.FAILURE_CODE, result.getStatusCode());
+                verifyNoInteractions(profiles);
+                verify(limiter, never()).enforce(anyString(), anyList());
+        }
 
     @Test
     void inactiveDeletedAndInconsistentProfilesAreIndistinguishableFromNoMatch() {
