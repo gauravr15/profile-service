@@ -17,6 +17,7 @@ import com.odin.profileservice.utility.PhoneNumberHasher;
 import com.odin.profileservice.utility.ResponseObject;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -113,23 +114,38 @@ public class ContactDiscoveryService {
     }
 
     private ValidatedRequest validate(MobileListDTO request) {
-        if (request == null || request.getMobile() == null
-                || request.getMobile().isEmpty()
-                || request.getMobile().size() > properties.getMaxNumbers()) {
+        if (request == null || request.getMobile() == null) {
+            logInvalidRequest("NULL_LIST", uniqueInputCount(request));
+            throw ContactDiscoveryException.invalidRequest();
+        }
+        if (request.getMobile().isEmpty()) {
+            logInvalidRequest("OTHER_VALIDATION_REASON", uniqueInputCount(request));
+            throw ContactDiscoveryException.invalidRequest();
+        }
+        if (request.getMobile().size() > properties.getMaxNumbers()) {
+            logInvalidRequest("TOO_MANY_NUMBERS", uniqueInputCount(request));
             throw ContactDiscoveryException.invalidRequest();
         }
         String region = resolveRegion(request.getCountryCode());
         Map<String, String> canonicalToSubmitted = new LinkedHashMap<>();
         for (String value : request.getMobile()) {
-            if (value == null || value.trim().isEmpty()
-                    || value.length() > properties.getMaxPhoneLength()
-                    || !value.matches("[0-9+().\\-\\s]+")) {
+            if (value == null || value.trim().isEmpty()) {
+                logInvalidRequest("EMPTY_OR_NULL_ITEM", uniqueInputCount(request));
+                throw ContactDiscoveryException.invalidRequest();
+            }
+            if (value.length() > properties.getMaxPhoneLength()) {
+                logInvalidRequest("PHONE_TOO_LONG", uniqueInputCount(request));
+                throw ContactDiscoveryException.invalidRequest();
+            }
+            if (!value.matches("[0-9+().\\-\\s]+")) {
+                logInvalidRequest("INVALID_PHONE_FORMAT", uniqueInputCount(request));
                 throw ContactDiscoveryException.invalidRequest();
             }
             final String canonical;
             try {
                 canonical = phoneNumberHasher.normalizePhoneNumber(value, region);
             } catch (IllegalArgumentException ex) {
+                logInvalidRequest("OTHER_VALIDATION_REASON", uniqueInputCount(request));
                 throw ContactDiscoveryException.invalidRequest();
             }
             canonicalToSubmitted.putIfAbsent(canonical, value);
@@ -139,24 +155,56 @@ public class ContactDiscoveryService {
 
     private String resolveRegion(String countryCode) {
         if (countryCode == null) {
+            logInvalidRequest("INVALID_COUNTRY_CODE", -1);
             throw ContactDiscoveryException.invalidRequest();
         }
         String trimmed = countryCode.trim();
         if (!trimmed.matches("\\+?[0-9]{1,3}")) {
+            logInvalidRequest("INVALID_COUNTRY_CODE", -1);
             throw ContactDiscoveryException.invalidRequest();
         }
         int callingCode;
         try {
             callingCode = Integer.parseInt(trimmed.replace("+", ""));
         } catch (NumberFormatException ex) {
+            logInvalidRequest("INVALID_COUNTRY_CODE", -1);
             throw ContactDiscoveryException.invalidRequest();
         }
         List<String> regions = PhoneNumberUtil.getInstance()
                 .getRegionCodesForCountryCode(callingCode);
         if (regions.isEmpty()) {
+            logInvalidRequest("INVALID_COUNTRY_CODE", -1);
             throw ContactDiscoveryException.invalidRequest();
         }
         return regions.get(0);
+    }
+
+    private void logInvalidRequest(String validationReason, int uniqueInputCount) {
+        log.warn(
+                "[BULK-CUSTOMER-DETAILS][VALIDATION] traceId={} uniqueInputCount={} validationReason={}",
+                traceId(),
+                uniqueInputCount,
+                validationReason);
+    }
+
+    private int uniqueInputCount(MobileListDTO request) {
+        if (request == null || request.getMobile() == null) {
+            return -1;
+        }
+        return (int) request.getMobile().stream()
+                .filter(value -> value != null)
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .distinct()
+                .count();
+    }
+
+    private String traceId() {
+        String traceId = MDC.get("correlationId");
+        if (traceId == null || traceId.isBlank()) {
+            traceId = MDC.get("traceId");
+        }
+        return traceId == null || traceId.isBlank() ? "unknown" : traceId;
     }
 
     private boolean isConsistentActiveProfile(Profile profile) {
