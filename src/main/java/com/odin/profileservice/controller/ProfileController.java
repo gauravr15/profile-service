@@ -73,8 +73,21 @@ public class ProfileController {
 				com.odin.profileservice.utility.BulkCustomerDetailsDiagnostics.requestByteLength(servlet));
 		try {
 			CustomerType customerType = CustomerType.CUSTOMER;
-			ResponseDTO result = factory.getInstance(customerType)
-					.fetchCustomerByMobile(servlet, customerType, mobiles);
+			ResponseDTO result;
+			try {
+				result = factory.getInstance(customerType)
+						.fetchCustomerByMobile(servlet, customerType, mobiles);
+			} catch (Exception ex) {
+				log.error(
+						"[BULK-CUSTOMER-DETAILS][REACHABILITY] stage=service-call-exception traceId={} method={} path={} exceptionClass={} safeErrorCategory={}",
+						com.odin.profileservice.utility.BulkCustomerDetailsDiagnostics.traceId(servlet),
+						servlet.getMethod(),
+						servlet.getRequestURI(),
+						ex.getClass().getName(),
+						com.odin.profileservice.utility.BulkCustomerDetailsDiagnostics.safeCategory(ex.getClass().getName()),
+						ex);
+				throw ex;
+			}
 			log.info(
 					"[BULK-CUSTOMER-DETAILS][REACHABILITY] stage=after-service-return traceId={} method={} path={} httpStatus=200 requestBytes={}",
 					com.odin.profileservice.utility.BulkCustomerDetailsDiagnostics.traceId(servlet),
