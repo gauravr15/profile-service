@@ -64,6 +64,12 @@ class ContactDiscoveryServiceTest {
                         .statusCode(ResponseCodes.FAILURE_CODE)
                         .status("FAILURE")
                         .build());
+                when(responses.buildResponse(anyString(), eq(ResponseCodes.SUCCESS_CODE), any(Map.class)))
+                                .thenAnswer(invocation -> ResponseDTO.builder()
+                                                .statusCode(ResponseCodes.SUCCESS_CODE)
+                                                .status("SUCCESS")
+                                                .data(invocation.getArgument(2))
+                                                .build());
 
         service = new ContactDiscoveryService(
                 profiles, users, blocks, hasher, limiter, properties,
@@ -144,13 +150,47 @@ class ContactDiscoveryServiceTest {
     }
 
         @Test
-        void allInvalidEntriesReturnFailureAndNeverReachRepository() {
+        void allInvalidEntriesReturnSuccessWithEmptyDataAndNeverReachRepository() {
                 ResponseDTO result = service.discover("70", request(
                                 (String) null, " ", "1".repeat(33), "*919900000092"));
 
-                assertEquals(ResponseCodes.FAILURE_CODE, result.getStatusCode());
+                assertEquals(ResponseCodes.SUCCESS_CODE, result.getStatusCode());
+                assertEquals("SUCCESS", result.getStatus());
+                assertTrue(result.getData() instanceof Map);
+                assertTrue(((Map<?, ?>) result.getData()).isEmpty());
                 verifyNoInteractions(profiles);
                 verify(limiter, never()).enforce(anyString(), anyList());
+        }
+
+        @Test
+        void mixedValidAndInvalidEntriesSkipInvalidAndQueryOnlyValidNormalizedNumbers() {
+                when(profiles.findLikeMobileNumber(anyList(), eq(true)))
+                                .thenReturn(List.of(activeProfile(92, "919900000092")));
+
+                ResponseDTO result = service.discover("70", request(
+                                "*919900000092", "919900000092", " ", "+91 9900000092"));
+
+                assertEquals(ResponseCodes.SUCCESS_CODE, result.getStatusCode());
+                @SuppressWarnings("unchecked")
+                ArgumentCaptor<List<String>> numbers = ArgumentCaptor.forClass(List.class);
+                verify(profiles).findLikeMobileNumber(numbers.capture(), eq(true));
+                assertEquals(List.of("919900000092"), numbers.getValue());
+                verify(limiter).enforce(eq("70"), eq(List.of("919900000092")));
+        }
+
+        @Test
+        void zeroRepositoryMatchesReturnSuccessWithEmptyDataAndRepositoryIsCalled() {
+                when(profiles.findLikeMobileNumber(anyList(), eq(true)))
+                                .thenReturn(Collections.emptyList());
+
+                ResponseDTO result = service.discover("70", request("919900000092"));
+
+                assertEquals(ResponseCodes.SUCCESS_CODE, result.getStatusCode());
+                assertEquals("SUCCESS", result.getStatus());
+                assertTrue(result.getData() instanceof Map);
+                assertTrue(((Map<?, ?>) result.getData()).isEmpty());
+                verify(profiles).findLikeMobileNumber(eq(List.of("919900000092")), eq(true));
+                verify(limiter).enforce(eq("70"), eq(List.of("919900000092")));
         }
 
     @Test

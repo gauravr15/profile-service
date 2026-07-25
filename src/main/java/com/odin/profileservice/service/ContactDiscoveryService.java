@@ -52,7 +52,10 @@ public class ContactDiscoveryService {
         }
         ValidatedRequest validated = validate(request);
         if (validated.canonicalToSubmitted.isEmpty()) {
-            return response.buildResponse(LanguageConstants.EN, ResponseCodes.FAILURE_CODE);
+            return response.buildResponse(
+                    LanguageConstants.EN,
+                    ResponseCodes.SUCCESS_CODE,
+                    new LinkedHashMap<String, CustomerDetailsDTO>());
         }
         if (validated.canonicalToSubmitted.size() > properties.getTargetBatchSize()) {
             log.warn("Contact discovery request above target batch size inputCount={}",
@@ -70,6 +73,12 @@ public class ContactDiscoveryService {
         }
         if (profiles == null) {
             throw ContactDiscoveryException.unavailable();
+        }
+        if (profiles.isEmpty()) {
+            return response.buildResponse(
+                    LanguageConstants.EN,
+                    ResponseCodes.SUCCESS_CODE,
+                    new LinkedHashMap<String, CustomerDetailsDTO>());
         }
 
         List<Profile> validProfiles = profiles.stream()
