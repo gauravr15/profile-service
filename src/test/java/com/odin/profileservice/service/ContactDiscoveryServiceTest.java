@@ -64,12 +64,6 @@ class ContactDiscoveryServiceTest {
                         .statusCode(ResponseCodes.FAILURE_CODE)
                         .status("FAILURE")
                         .build());
-                when(responses.buildResponse(anyString(), eq(ResponseCodes.SUCCESS_CODE), any(Map.class)))
-                                .thenAnswer(invocation -> ResponseDTO.builder()
-                                                .statusCode(ResponseCodes.SUCCESS_CODE)
-                                                .status("SUCCESS")
-                                                .data(invocation.getArgument(2))
-                                                .build());
 
         service = new ContactDiscoveryService(
                 profiles, users, blocks, hasher, limiter, properties,

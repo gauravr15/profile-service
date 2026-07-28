@@ -3,6 +3,8 @@ package com.odin.profileservice.service;
 import com.odin.profileservice.config.ContactDiscoveryProperties;
 import com.odin.profileservice.service.ContactTokenService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -16,6 +18,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ContactDiscoveryRateLimiter {
     private static final DefaultRedisScript<Long> FIXED_WINDOW = new DefaultRedisScript<>(
             "local n=redis.call('INCR',KEYS[1]);"
@@ -32,6 +35,17 @@ public class ContactDiscoveryRateLimiter {
                     + " for _,v in ipairs(added) do redis.call('SREM',KEYS[1],v); end;"
                     + " return redis.call('TTL',KEYS[1]);"
                     + "end; return 0;", Long.class);
+    private static final DefaultRedisScript<String> UNIQUE_DIAGNOSTIC =
+            new DefaultRedisScript<>(
+                    "local before=redis.call('SCARD',KEYS[1]);"
+                            + "local missing=0;"
+                            + "for i=1,#ARGV do "
+                            + " if redis.call('SISMEMBER',KEYS[1],ARGV[i])==0 then "
+                            + "  missing=missing+1;"
+                            + " end;"
+                            + "end;"
+                            + "return tostring(before)..':'..tostring(before+missing);",
+                    String.class);
 
     private final RedisTemplate<String, Object> redisTemplate;
     private final ContactDiscoveryProperties properties;
@@ -45,17 +59,37 @@ public class ContactDiscoveryRateLimiter {
                 ? properties.getSingleRequestsPerMinute()
                 : properties.getBulkRequestsPerMinute();
         String prefix = "contact-discovery:" + properties.getEnvironment() + ":";
+        String blockedKey = prefix + "blocked:" + accountToken;
         try {
-            if (Boolean.TRUE.equals(redisTemplate.hasKey(
-                    prefix + "blocked:" + accountToken))) {
+            if (Boolean.TRUE.equals(redisTemplate.hasKey(blockedKey))) {
+                String abuseRequestsKey =
+                        prefix + "abuse:requests:" + accountToken;
+                long count = safeNumericValue(abuseRequestsKey);
+                logRejection(
+                        "ABUSE_BLOCK",
+                        accountToken,
+                        count,
+                        count,
+                        properties.getAbuseMinimumRequests(),
+                        safeTtl(blockedKey));
                 throw ContactDiscoveryException.rateLimited(
                         properties.getTemporaryBlockSeconds());
             }
+            String rateKey =
+                    prefix + "rate:" + category + ":" + accountToken;
             Long requestRetry = redisTemplate.execute(
                     FIXED_WINDOW,
-                    Collections.singletonList(prefix + "rate:" + category + ":" + accountToken),
+                    Collections.singletonList(rateKey),
                     60, limit);
             if (requestRetry != null && requestRetry > 0) {
+                long countAfter = safeNumericValue(rateKey);
+                logRejection(
+                        "FIXED_WINDOW",
+                        accountToken,
+                        countAfter > 0 ? countAfter - 1 : -1,
+                        countAfter,
+                        limit,
+                        requestRetry);
                 throw ContactDiscoveryException.rateLimited(requestRetry.intValue());
             }
 
@@ -65,12 +99,23 @@ public class ContactDiscoveryRateLimiter {
             for (String number : canonicalNumbers) {
                 arguments.add(protectedToken("phone:" + number));
             }
+            String uniqueKey =
+                    prefix + "unique:" + LocalDate.now(ZoneOffset.UTC)
+                            + ":" + accountToken;
             Long uniqueRetry = redisTemplate.execute(
                     UNIQUE_WINDOW,
-                    Collections.singletonList(prefix + "unique:" + LocalDate.now(ZoneOffset.UTC)
-                            + ":" + accountToken),
+                    Collections.singletonList(uniqueKey),
                     arguments.toArray());
             if (uniqueRetry != null && uniqueRetry > 0) {
+                long[] counts = uniqueCounts(
+                        uniqueKey, arguments.subList(2, arguments.size()));
+                logRejection(
+                        "DAILY_UNIQUE",
+                        accountToken,
+                        counts[0],
+                        counts[1],
+                        properties.getDailyUniqueNumbers(),
+                        uniqueRetry);
                 throw ContactDiscoveryException.rateLimited(uniqueRetry.intValue());
             }
         } catch (ContactDiscoveryException ex) {
@@ -149,5 +194,83 @@ public class ContactDiscoveryRateLimiter {
         java.time.Instant end = LocalDate.now(ZoneOffset.UTC)
                 .plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC);
         return Math.max(1, end.getEpochSecond() - now.getEpochSecond());
+    }
+
+    private long[] uniqueCounts(String uniqueKey, List<Object> protectedNumbers) {
+        try {
+            String diagnostic = redisTemplate.execute(
+                    UNIQUE_DIAGNOSTIC,
+                    Collections.singletonList(uniqueKey),
+                    protectedNumbers.toArray());
+            if (diagnostic == null) {
+                return new long[] {-1, -1};
+            }
+            String[] values = diagnostic.split(":", 2);
+            return new long[] {
+                    Long.parseLong(values[0]),
+                    Long.parseLong(values[1])
+            };
+        } catch (RuntimeException ignored) {
+            return new long[] {-1, -1};
+        }
+    }
+
+    private long safeTtl(String key) {
+        try {
+            Long ttl = redisTemplate.getExpire(key);
+            return ttl == null ? -1 : ttl;
+        } catch (RuntimeException ignored) {
+            return -1;
+        }
+    }
+
+    private long numericValue(Object value) {
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        if (value == null) {
+            return -1;
+        }
+        try {
+            return Long.parseLong(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return -1;
+        }
+    }
+
+    private long safeNumericValue(String key) {
+        try {
+            return numericValue(redisTemplate.opsForValue().get(key));
+        } catch (RuntimeException exception) {
+            return -1L;
+        }
+    }
+
+    private void logRejection(
+            String branch,
+            String protectedAccountIdentifier,
+            long countBefore,
+            long countAfter,
+            long configuredLimit,
+            long remainingTtl) {
+        log.warn(
+                "[CONTACT_LIMITER_DIAG] traceId={} limiterBranch={} "
+                        + "protectedAccountKeyId={} countBefore={} countAfter={} "
+                        + "configuredLimit={} remainingTTL={} decision=REJECT",
+                traceId(),
+                branch,
+                protectedAccountIdentifier,
+                countBefore,
+                countAfter,
+                configuredLimit,
+                remainingTtl);
+    }
+
+    private String traceId() {
+        String traceId = MDC.get("correlationId");
+        if (traceId == null || traceId.isBlank()) {
+            traceId = MDC.get("traceId");
+        }
+        return traceId == null || traceId.isBlank() ? "unknown" : traceId;
     }
 }
