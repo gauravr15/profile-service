@@ -109,7 +109,11 @@ public class ContactDiscoveryService {
 
         int matched = result.size();
         int unmatched = validated.canonicalToSubmitted.size() - matched;
-        rateLimiter.recordOutcome(customerId, matched, unmatched);
+        rateLimiter.recordOutcome(
+                customerId,
+                matched,
+                unmatched,
+                validated.canonicalToSubmitted.size() == 1);
         log.info("Contact discovery completed inputCount={} matchedCount={} filteredCount={} durationMs={}",
                 validated.canonicalToSubmitted.size(), matched,
                 Math.max(0, profiles.size() - eligible.size()),

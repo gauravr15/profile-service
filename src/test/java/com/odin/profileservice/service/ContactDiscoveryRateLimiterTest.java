@@ -61,18 +61,25 @@ class ContactDiscoveryRateLimiterTest {
     }
 
     @Test
-    void requestRateAndDailyUniqueLimitReturnSafe429() {
+    void bulkFixedWindowLimitStillReturnsSafe429() {
         rebuildLimiterWithScriptResults(12L);
         ContactDiscoveryException requestLimit = assertThrows(
                 ContactDiscoveryException.class,
-                () -> limiter.enforce("70", List.of("919900000092")));
+                () -> limiter.enforce(
+                        "70",
+                        List.of("919900000092", "919900000093")));
         assertEquals(429, requestLimit.getStatus().value());
         assertEquals(12, requestLimit.getRetryAfterSeconds());
+    }
 
+    @Test
+    void bulkDailyUniqueLimitStillReturnsSafe429() {
         rebuildLimiterWithScriptResults(0L, 45L);
         ContactDiscoveryException uniqueLimit = assertThrows(
                 ContactDiscoveryException.class,
-                () -> limiter.enforce("70", List.of("919900000092")));
+                () -> limiter.enforce(
+                        "70",
+                        List.of("919900000092", "919900000093")));
         assertEquals(429, uniqueLimit.getStatus().value());
         assertEquals(45, uniqueLimit.getRetryAfterSeconds());
     }
@@ -91,17 +98,50 @@ class ContactDiscoveryRateLimiterTest {
     }
 
     @Test
-    void highUnmatchedRatioCreatesTemporaryProtectedBlock() {
+    void singleNumberHighUnmatchedRatioCreatesTemporaryProtectedBlock() {
         when(values.increment(contains(":requests:"))).thenReturn(10L);
         when(values.increment(contains(":unmatched:"), eq(19L))).thenReturn(95L);
         when(values.increment(contains(":inputs:"), eq(20L))).thenReturn(100L);
 
-        limiter.recordOutcome("70", 1, 19);
+        limiter.recordOutcome("70", 1, 19, true);
 
         ArgumentCaptor<String> key = ArgumentCaptor.forClass(String.class);
         verify(values).set(key.capture(), eq("1"), any(java.time.Duration.class));
         assertTrue(key.getValue().contains(":blocked:"));
         assertFalse(key.getValue().endsWith(":70"));
+    }
+
+    @Test
+    void thirtyHighUnmatchedBulkBatchesDoNotCreateOrEnforceAbuseBlock() {
+        when(redis.hasKey(contains(":blocked:"))).thenReturn(true);
+
+        for (int batch = 0; batch < 30; batch++) {
+            limiter.recordOutcome("70", 10, 190, false);
+            assertDoesNotThrow(() -> limiter.enforce(
+                    "70",
+                    List.of("919900000092", "919900000093")));
+        }
+
+        verify(redis, never()).hasKey(contains(":blocked:"));
+        verify(values, never()).increment(contains(":requests:"));
+        verify(values, never()).increment(contains(":unmatched:"), anyLong());
+        verify(values, never()).increment(contains(":inputs:"), anyLong());
+        verify(values, never()).set(
+                contains(":blocked:"),
+                any(),
+                any(java.time.Duration.class));
+    }
+
+    @Test
+    void singleNumberRequestStillEnforcesExistingAbuseBlock() {
+        when(redis.hasKey(contains(":blocked:"))).thenReturn(true);
+
+        ContactDiscoveryException blocked = assertThrows(
+                ContactDiscoveryException.class,
+                () -> limiter.enforce("70", List.of("919900000092")));
+
+        assertEquals(429, blocked.getStatus().value());
+        assertEquals(900, blocked.getRetryAfterSeconds());
     }
 
     @SuppressWarnings("unchecked")

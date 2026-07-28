@@ -61,7 +61,7 @@ public class ContactDiscoveryRateLimiter {
         String prefix = "contact-discovery:" + properties.getEnvironment() + ":";
         String blockedKey = prefix + "blocked:" + accountToken;
         try {
-            if (Boolean.TRUE.equals(redisTemplate.hasKey(blockedKey))) {
+            if (single && Boolean.TRUE.equals(redisTemplate.hasKey(blockedKey))) {
                 String abuseRequestsKey =
                         prefix + "abuse:requests:" + accountToken;
                 long count = safeNumericValue(abuseRequestsKey);
@@ -127,7 +127,14 @@ public class ContactDiscoveryRateLimiter {
         }
     }
 
-    public void recordOutcome(String customerId, int matched, int unmatched) {
+    public void recordOutcome(
+            String customerId,
+            int matched,
+            int unmatched,
+            boolean singleNumberRequest) {
+        if (!singleNumberRequest) {
+            return;
+        }
         String accountToken = protectedToken("account:" + customerId);
         String prefix = "contact-discovery:" + properties.getEnvironment() + ":abuse:";
         String requestsKey = prefix + "requests:" + accountToken;

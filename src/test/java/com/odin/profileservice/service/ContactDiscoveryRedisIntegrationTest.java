@@ -159,8 +159,8 @@ class ContactDiscoveryRedisIntegrationTest {
         ContactDiscoveryRateLimiter first = limiter(redisA, properties);
         ContactDiscoveryRateLimiter second = limiter(redisB, properties);
 
-        first.recordOutcome("70", 0, 10);
-        first.recordOutcome("70", 0, 10);
+        first.recordOutcome("70", 0, 10, true);
+        first.recordOutcome("70", 0, 10, true);
         ContactDiscoveryException blocked = assertThrows(
                 ContactDiscoveryException.class,
                 () -> second.enforce("70", List.of("919900000092")));
@@ -202,8 +202,8 @@ class ContactDiscoveryRedisIntegrationTest {
         properties.setAbuseUnmatchedPercent(90);
         ContactDiscoveryRateLimiter limiter = limiter(redisA, properties);
         limiter.enforce("70", List.of("919900000092"));
-        limiter.recordOutcome("70", 0, 10);
-        limiter.recordOutcome("70", 0, 10);
+        limiter.recordOutcome("70", 0, 10, true);
+        limiter.recordOutcome("70", 0, 10, true);
         assertFalse(redisA.keys("contact-discovery:" + properties.getEnvironment() + ":*")
                 .isEmpty());
 
